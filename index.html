@@ -23,8 +23,8 @@
         h1 { text-align: center; font-size: 2rem; letter-spacing: .05em; margin-bottom: .75rem; }
         h1 span { color: var(--accent); }
         .hud {
-            display: flex; justify-content: space-between; background: var(--panel);
-            padding: .6rem 1rem; border-radius: 12px 12px 0 0; font-weight: 700;
+            display: flex; justify-content: space-between; gap: .5rem; background: var(--panel);
+            padding: .6rem 1rem; border-radius: 12px 12px 0 0; font-weight: 700; font-size: .95rem;
         }
         .hud b { color: var(--accent); }
         .stage { position: relative; }
@@ -35,16 +35,21 @@
         .overlay {
             position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
             justify-content: center; gap: 1rem; text-align: center; padding: 1.5rem;
-            background: rgba(2, 6, 23, .85); border-radius: 0 0 12px 12px;
+            background: rgba(2, 6, 23, .88); border-radius: 0 0 12px 12px;
         }
         .overlay.hidden { display: none; }
         .overlay h2 { font-size: 1.8rem; }
         .overlay p { color: var(--muted); line-height: 1.6; }
+        .stats { list-style: none; color: var(--text); line-height: 1.8; font-size: .95rem; }
+        .stats b { color: var(--accent); }
+        .buttons { display: flex; flex-direction: column; gap: .6rem; }
         button {
             font: inherit; font-weight: 700; font-size: 1.1rem; border: none; border-radius: 8px;
             padding: .8rem 2rem; background: var(--accent); color: #111; cursor: pointer;
         }
+        button.secondary { background: transparent; color: var(--text); border: 2px solid #475569; font-size: 1rem; padding: .6rem 1.5rem; }
         button:hover { filter: brightness(1.1); }
+        button.hidden { display: none; }
         .help { text-align: center; color: var(--muted); font-size: .9rem; margin-top: .75rem; }
     </style>
 </head>
@@ -53,16 +58,20 @@
         <h1>BRICK <span>BREAKER</span></h1>
         <div class="hud">
             <span>Score <b id="score">0</b></span>
-            <span>Level <b id="level">1</b></span>
+            <span>Level <b id="level">1</b>/455</span>
             <span>Lives <b id="lives">3</b></span>
             <span>Best <b id="best">0</b></span>
         </div>
         <div class="stage">
             <canvas id="game" width="480" height="600"></canvas>
             <div class="overlay" id="overlay">
-                <h2 id="ov-title">Ready?</h2>
-                <p id="ov-text">Smash every brick to clear the level.<br>Catch falling power-ups: <b style="color:#22d3ee">W</b>ide paddle, <b style="color:#a3e635">M</b>ulti-ball, <b style="color:#f472b6">S</b>low ball.</p>
-                <button id="start">Play</button>
+                <h2 id="ov-title">455 Levels</h2>
+                <p id="ov-text">Every level is harder than the last: faster ball, smaller paddle, tougher bricks, unbreakable steel, and walls that push down on you. Catch power-ups: <b style="color:#22d3ee">W</b>ide, <b style="color:#a3e635">M</b>ulti-ball, <b style="color:#f472b6">S</b>low, <b style="color:#f87171">♥</b> extra life.</p>
+                <ul class="stats" id="ov-stats"></ul>
+                <div class="buttons">
+                    <button id="start">Play</button>
+                    <button id="restart" class="secondary hidden">Start over from level 1</button>
+                </div>
             </div>
         </div>
         <p class="help">Move: mouse, touch, or ← → / A D &nbsp;·&nbsp; Launch: click, tap, or Space &nbsp;·&nbsp; Pause: P</p>
@@ -75,19 +84,94 @@
         const W = canvas.width, H = canvas.height;
         const $ = id => document.getElementById(id);
 
-        const COLS = 8, BRICK_H = 20, BRICK_GAP = 6, TOP = 60;
+        const MAX_LEVEL = 455;
+        const COLS = 10, BRICK_H = 18, BRICK_GAP = 5, TOP = 50;
         const BRICK_W = (W - BRICK_GAP * (COLS + 1)) / COLS;
-        const ROW_COLORS = ['#ef4444', '#f97316', '#f59e0b', '#22c55e', '#06b6d4', '#6366f1', '#a855f7'];
-        const POWERS = { W: '#22d3ee', M: '#a3e635', S: '#f472b6' };
-        const BASE_PADDLE = 90;
+        const ROW_STEP = BRICK_H + BRICK_GAP;
+        const HP_COLORS = ['#22c55e', '#06b6d4', '#6366f1', '#a855f7', '#f59e0b', '#f97316', '#ef4444'];
+        const STEEL = '#64748b';
+        const POWERS = { W: '#22d3ee', M: '#a3e635', S: '#f472b6', L: '#f87171' };
+        const PADDLE_Y = H - 30, DANGER_Y = PADDLE_Y - 45;
 
-        let best = 0;
-        try { best = +localStorage.getItem('brickBreakerBest') || 0; } catch (e) {}
+        /* ---------- difficulty curve: everything gets worse every level ---------- */
+        function difficulty(L) {
+            const t = (L - 1) / (MAX_LEVEL - 1);
+            return {
+                speed: 300 + 360 * (1 - Math.exp(-(L - 1) / 30)) + 160 * t,  // 300 → 820 px/s
+                paddle: 34 + 56 * Math.exp(-(L - 1) / 20),                    // 90 → 34 px
+                rows: Math.min(4 + Math.ceil(L / 2), 13),
+                maxHp: Math.min(1 + Math.floor((L - 1) / 3), 7),
+                steel: L < 6 ? 0 : Math.min(0.05 + (L - 6) * 0.004, 0.3),
+                drop: Math.max(0.03, 0.16 - L * 0.003),
+                // from level 12 the wall creeps down; the interval keeps shrinking
+                descend: L < 12 ? 0 : 3.5 + 18.5 * Math.exp(-(L - 12) / 45),
+            };
+        }
+
+        /* ---------- level generator (seeded, so level N always looks the same) ---------- */
+        function rng(seed) {
+            return () => {
+                seed = (seed + 0x6D2B79F5) | 0;
+                let x = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+                x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+                return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+            };
+        }
+
+        const PATTERNS = [
+            (r, c) => true,                                         // wall
+            (r, c) => (r + c) % 2 === 0,                            // checker
+            (r, c, R) => (4 - c) <= r,                              // pyramid
+            (r, c, R) => (4 - c) < R - r,                           // inverted pyramid
+            (r, c) => r % 2 === 0,                                  // stripes
+            (r, c) => c % 2 === 0,                                  // columns
+            (r, c, R) => Math.abs(r - (R - 1) / 2) + (4 - c) <= R / 2, // diamond
+            (r, c, R) => r === 0 || r === R - 1 || c === 0 || c === 4, // frame
+            (r, c) => (c + r) % 3 !== 0,                            // zigzag
+            (r, c, R, rand) => rand() < 0.7,                        // scatter
+            (r, c) => (r % 4 < 2) !== (c % 2 === 0),                // blocks
+            (r, c, R) => c >= 4 - (r % 5),                          // waves
+        ];
+
+        function buildLevel(L, seed = L) {
+            const d = difficulty(L), rand = rng(seed * 7919 + 17);
+            const pattern = PATTERNS[(L - 1) % PATTERNS.length];
+            const R = d.rows;
+            const grid = [];
+            for (let r = 0; r < R; r++) {
+                const half = [];
+                for (let c = 0; c < 5; c++) half.push(pattern(r, c, R, rand) && rand() > 0.06);
+                grid.push(half.concat(half.slice().reverse()));   // mirror for symmetry
+            }
+            const out = [];
+            for (let r = 0; r < R; r++) {
+                let lastSteel = -9;
+                for (let c = 0; c < COLS; c++) {
+                    if (!grid[r][c]) continue;
+                    // steel bricks are never closer than 3 apart in a row, so nothing gets sealed in
+                    let steel = rand() < d.steel && c - lastSteel >= 3;
+                    if (steel) lastSteel = c;
+                    // higher levels skew hit points toward the maximum
+                    const hp = steel ? Infinity : 1 + Math.floor(Math.pow(rand(), Math.max(0.35, 1 - L / 60)) * d.maxHp);
+                    out.push({ x: BRICK_GAP + c * (BRICK_W + BRICK_GAP), y: TOP + r * ROW_STEP, hp, maxHp: hp, steel });
+                }
+            }
+            if (out.filter(b => !b.steel).length < 6) return buildLevel(L, seed + MAX_LEVEL); // too sparse: reroll
+            return out;
+        }
+
+        /* ---------- state ---------- */
+        let best = 0, reached = 1;
+        try {
+            best = +localStorage.getItem('brickBreakerBest') || 0;
+            reached = Math.min(+localStorage.getItem('brickBreakerLevel') || 1, MAX_LEVEL);
+        } catch (e) {}
         $('best').textContent = best;
 
         const keys = {};
-        let paddle, balls, bricks, drops, particles;
-        let score, lives, level, state = 'menu', last, wideTimer = 0, slowTimer = 0;
+        let paddle, balls, bricks, drops, particles, diff;
+        let score = 0, lives = 3, level = 1, state = 'menu', last;
+        let wideTimer = 0, slowTimer = 0, descendTimer = 0, shifted = 0;
 
         function hud() {
             $('score').textContent = score;
@@ -95,46 +179,42 @@
             $('level').textContent = level;
         }
 
-        function buildLevel() {
-            bricks = [];
-            const rows = Math.min(4 + level, 7);
-            for (let r = 0; r < rows; r++) {
-                for (let c = 0; c < COLS; c++) {
-                    // later levels get gaps in patterns and tougher bricks
-                    if (level >= 2 && (r + c + level) % 7 === 0) continue;
-                    const hp = level >= 3 && r < level - 2 ? 2 : 1;
-                    bricks.push({
-                        x: BRICK_GAP + c * (BRICK_W + BRICK_GAP),
-                        y: TOP + r * (BRICK_H + BRICK_GAP),
-                        hp, color: ROW_COLORS[r % ROW_COLORS.length],
-                    });
-                }
-            }
+        function save() {
+            try {
+                localStorage.setItem('brickBreakerLevel', reached);
+                localStorage.setItem('brickBreakerBest', best);
+            } catch (e) {}
         }
 
-        function ballSpeed() { return (300 + level * 25) * (slowTimer > 0 ? 0.65 : 1); }
+        function loadLevel() {
+            diff = difficulty(level);
+            bricks = buildLevel(level);
+            shifted = 0;
+            descendTimer = diff.descend;
+            resetBall();
+            hud();
+        }
+
+        const ballSpeed = () => diff.speed * (slowTimer > 0 ? 0.65 : 1);
 
         function resetBall() {
             balls = [{ x: paddle.x, y: paddle.y - 10, vx: 0, vy: 0, r: 7, stuck: true }];
             drops = [];
             wideTimer = slowTimer = 0;
-            paddle.w = BASE_PADDLE;
+            paddle.w = diff.paddle;
         }
 
-        function newGame() {
-            score = 0; lives = 3; level = 1;
-            paddle = { x: W / 2, y: H - 30, w: BASE_PADDLE, h: 12 };
+        function newGame(startLevel) {
+            score = 0; lives = 3; level = startLevel;
+            paddle = { x: W / 2, y: PADDLE_Y, w: 90, h: 12 };
             particles = [];
-            buildLevel();
-            resetBall();
-            hud();
+            loadLevel();
         }
 
         function launch() {
             for (const b of balls) {
                 if (!b.stuck) continue;
-                const a = -Math.PI / 2 + (Math.random() - 0.5) * 0.6;
-                const s = ballSpeed();
+                const a = -Math.PI / 2 + (Math.random() - 0.5) * 0.6, s = ballSpeed();
                 b.vx = Math.cos(a) * s; b.vy = Math.sin(a) * s; b.stuck = false;
             }
         }
@@ -146,23 +226,31 @@
             }
         }
 
+        function brickColor(br) {
+            return br.steel ? STEEL : HP_COLORS[Math.min(br.hp, HP_COLORS.length) - 1];
+        }
+
         function hitBrick(br) {
+            const cx = br.x + BRICK_W / 2, cy = br.y + BRICK_H / 2;
+            if (br.steel) { burst(cx, cy, '#cbd5e1', 3); return; }
             br.hp--;
-            if (br.hp > 0) { burst(br.x + BRICK_W / 2, br.y + BRICK_H / 2, '#fff', 4); return; }
+            if (br.hp > 0) { burst(cx, cy, '#fff', 4); return; }
             bricks.splice(bricks.indexOf(br), 1);
-            score += 10 * level;
-            burst(br.x + BRICK_W / 2, br.y + BRICK_H / 2, br.color);
-            if (Math.random() < 0.14) {
-                const kinds = Object.keys(POWERS);
-                drops.push({ x: br.x + BRICK_W / 2, y: br.y, kind: kinds[Math.floor(Math.random() * kinds.length)] });
+            score += 10 * br.maxHp + level;
+            burst(cx, cy, brickColor({ hp: br.maxHp }));
+            if (Math.random() < diff.drop) {
+                const r = Math.random();
+                const kind = r < 0.08 ? 'L' : r < 0.4 ? 'W' : r < 0.7 ? 'M' : 'S';
+                drops.push({ x: cx, y: br.y, kind });
             }
             hud();
         }
 
         function applyPower(kind) {
             score += 25;
-            if (kind === 'W') { wideTimer = 12; paddle.w = BASE_PADDLE * 1.6; }
-            if (kind === 'S') { slowTimer = 10; rescaleBalls(); }
+            if (kind === 'W') { wideTimer = 10; paddle.w = diff.paddle * 1.6; }
+            if (kind === 'S') { slowTimer = 8; rescaleBalls(); }
+            if (kind === 'L') lives++;
             if (kind === 'M') {
                 const extra = [];
                 for (const b of balls.slice(0, 3)) {
@@ -185,14 +273,33 @@
             }
         }
 
+        function loseLife(reason) {
+            lives--; hud();
+            if (lives <= 0) return endGame(reason), false;
+            resetBall();
+            return true;
+        }
+
         function update(dt) {
-            // paddle (keyboard)
             const dir = (keys.ArrowRight || keys.d ? 1 : 0) - (keys.ArrowLeft || keys.a ? 1 : 0);
-            paddle.x += dir * 520 * dt;
+            paddle.x += dir * 560 * dt;
             paddle.x = Math.max(paddle.w / 2, Math.min(W - paddle.w / 2, paddle.x));
 
-            if (wideTimer > 0 && (wideTimer -= dt) <= 0) paddle.w = BASE_PADDLE;
+            if (wideTimer > 0 && (wideTimer -= dt) <= 0) paddle.w = diff.paddle;
             if (slowTimer > 0 && (slowTimer -= dt) <= 0) rescaleBalls();
+
+            // creeping wall: bricks step down; reaching the danger line costs a life
+            if (diff.descend && balls.some(b => !b.stuck) && (descendTimer -= dt) <= 0) {
+                descendTimer = diff.descend;
+                for (const br of bricks) br.y += ROW_STEP;
+                shifted += ROW_STEP;
+                if (bricks.some(br => br.y + BRICK_H >= DANGER_Y)) {
+                    for (const br of bricks) br.y -= shifted;
+                    shifted = 0;
+                    burst(W / 2, DANGER_Y, '#ef4444', 40);
+                    if (!loseLife('The wall reached you.')) return;
+                }
+            }
 
             for (let i = balls.length - 1; i >= 0; i--) {
                 const b = balls[i];
@@ -208,7 +315,6 @@
                     if (b.x > W - b.r) { b.x = W - b.r; b.vx = -Math.abs(b.vx); }
                     if (b.y < b.r) { b.y = b.r; b.vy = Math.abs(b.vy); }
 
-                    // paddle: bounce angle depends on where the ball lands
                     if (b.vy > 0 && b.y + b.r >= paddle.y && b.y - b.r <= paddle.y + paddle.h &&
                         Math.abs(b.x - paddle.x) <= paddle.w / 2 + b.r) {
                         const rel = (b.x - paddle.x) / (paddle.w / 2);
@@ -230,19 +336,21 @@
                         }
                     }
                 }
+                // stop near-horizontal loops between steel bricks and walls
+                if (Math.abs(b.vy) < ballSpeed() * 0.2) {
+                    b.vy = (b.vy < 0 ? -1 : 1) * ballSpeed() * 0.2;
+                    const m = Math.hypot(b.vx, b.vy), s = ballSpeed();
+                    b.vx = b.vx / m * s; b.vy = b.vy / m * s;
+                }
 
                 if (b.y - b.r > H) balls.splice(i, 1);
             }
 
-            if (balls.length === 0) {
-                lives--; hud();
-                if (lives <= 0) return endGame(false);
-                resetBall();
-            }
+            if (balls.length === 0 && !loseLife('Out of balls.')) return;
 
             for (let i = drops.length - 1; i >= 0; i--) {
                 const d = drops[i];
-                d.y += 150 * dt;
+                d.y += 160 * dt;
                 if (d.y + 10 >= paddle.y && d.y - 10 <= paddle.y + paddle.h && Math.abs(d.x - paddle.x) <= paddle.w / 2 + 10) {
                     applyPower(d.kind); burst(d.x, d.y, POWERS[d.kind], 14); drops.splice(i, 1);
                 } else if (d.y > H + 20) drops.splice(i, 1);
@@ -254,15 +362,37 @@
                 if (p.life <= 0) particles.splice(i, 1);
             }
 
-            if (bricks.length === 0) {
-                level++;
-                score += 100 * lives;
-                buildLevel(); resetBall(); hud();
-                showOverlay('Level ' + level, 'Bonus +' + (100 * lives) + '. Bricks get tougher and the ball gets faster.', 'Continue');
-                state = 'between';
-            }
+            if (!bricks.some(b => !b.steel)) levelComplete();
         }
 
+        function levelComplete() {
+            const bonus = 100 * lives + level * 20;
+            score += bonus;
+            if (score > best) best = score;
+            $('best').textContent = best;
+            if (level >= MAX_LEVEL) {
+                save();
+                state = 'over';
+                return showOverlay('You beat all 455 levels!', 'Final score: ' + score + '. Unbelievable.', [], 'Play Again', false);
+            }
+            const prev = diff;
+            level++;
+            reached = Math.max(reached, level);
+            save();
+            loadLevel();
+            const pct = (a, b) => '+' + Math.round((b / a - 1) * 100) + '%';
+            const stats = [
+                `Ball speed <b>${Math.round(diff.speed)}</b> (${pct(prev.speed, diff.speed)})`,
+                `Paddle width <b>${Math.round(diff.paddle)}px</b>`,
+                `Toughest brick <b>${diff.maxHp} hit${diff.maxHp > 1 ? "s" : ""}</b>`,
+                diff.steel ? `Steel bricks <b>${Math.round(diff.steel * 100)}%</b>` : '',
+                diff.descend ? `Wall drops every <b>${diff.descend.toFixed(1)}s</b>` : '',
+            ].filter(Boolean);
+            showOverlay('Level ' + level, 'Level bonus +' + bonus + '. It only gets harder from here.', stats, 'Continue', false);
+            state = 'between';
+        }
+
+        /* ---------- drawing ---------- */
         function rect(x, y, w, h, r) {
             ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); ctx.fill();
         }
@@ -270,12 +400,21 @@
         function draw() {
             ctx.clearRect(0, 0, W, H);
 
+            if (diff && diff.descend) {
+                ctx.strokeStyle = 'rgba(239,68,68,.35)'; ctx.setLineDash([6, 6]); ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(0, DANGER_Y); ctx.lineTo(W, DANGER_Y); ctx.stroke(); ctx.setLineDash([]);
+            }
+
             for (const br of bricks) {
-                ctx.fillStyle = br.color;
-                rect(br.x, br.y, BRICK_W, BRICK_H, 4);
-                if (br.hp > 1) {
-                    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
-                    ctx.strokeRect(br.x + 3, br.y + 3, BRICK_W - 6, BRICK_H - 6);
+                ctx.fillStyle = brickColor(br);
+                rect(br.x, br.y, BRICK_W, BRICK_H, 3);
+                if (br.steel) {
+                    ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.moveTo(br.x + 4, br.y + BRICK_H - 4); ctx.lineTo(br.x + BRICK_W - 4, br.y + 4); ctx.stroke();
+                } else if (br.hp > 1) {
+                    ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.font = 'bold 11px system-ui, sans-serif';
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText(br.hp, br.x + BRICK_W / 2, br.y + BRICK_H / 2 + 1);
                 }
             }
 
@@ -283,7 +422,7 @@
             for (const d of drops) {
                 ctx.fillStyle = POWERS[d.kind];
                 ctx.beginPath(); ctx.arc(d.x, d.y, 11, 0, Math.PI * 2); ctx.fill();
-                ctx.fillStyle = '#020617'; ctx.fillText(d.kind, d.x, d.y + 1);
+                ctx.fillStyle = '#020617'; ctx.fillText(d.kind === 'L' ? '♥' : d.kind, d.x, d.y + 1);
             }
 
             ctx.fillStyle = wideTimer > 0 ? POWERS.W : '#f59e0b';
@@ -300,7 +439,7 @@
 
             if (state === 'playing' && balls.some(b => b.stuck)) {
                 ctx.fillStyle = '#94a3b8'; ctx.font = '15px system-ui, sans-serif';
-                ctx.fillText('Click, tap, or press Space to launch', W / 2, H / 2 + 60);
+                ctx.fillText('Click, tap, or press Space to launch', W / 2, DANGER_Y - 20);
             }
             if (state === 'paused') {
                 ctx.fillStyle = 'rgba(2,6,23,.6)'; ctx.fillRect(0, 0, W, H);
@@ -317,25 +456,40 @@
             requestAnimationFrame(loop);
         }
 
-        function showOverlay(title, text, btn) {
+        /* ---------- menus ---------- */
+        function showOverlay(title, text, stats, btn, showRestart) {
             $('ov-title').textContent = title;
             $('ov-text').textContent = text;
+            $('ov-stats').innerHTML = stats.map(s => `<li>${s}</li>`).join('');
             $('start').textContent = btn;
+            $('restart').classList.toggle('hidden', !showRestart);
             $('overlay').classList.remove('hidden');
         }
 
-        function endGame() {
+        function endGame(reason) {
             state = 'over';
-            const isBest = score > best;
-            if (isBest) {
-                best = score; $('best').textContent = best;
-                try { localStorage.setItem('brickBreakerBest', best); } catch (e) {}
+            if (score > best) best = score;
+            $('best').textContent = best;
+            save();
+            showOverlay('Game Over', reason + ' You scored ' + score + ' on level ' + level + '.', [],
+                'Retry level ' + level, level > 1);
+        }
+
+        function menu() {
+            if (reached > 1) {
+                $('start').textContent = 'Continue from level ' + reached;
+                $('restart').classList.remove('hidden');
             }
-            showOverlay(isBest ? 'New High Score!' : 'Game Over', 'You reached level ' + level + ' with ' + score + ' points.', 'Play Again');
         }
 
         $('start').addEventListener('click', () => {
-            if (state === 'menu' || state === 'over') newGame();
+            if (state === 'menu') newGame(reached);
+            else if (state === 'over') newGame(level >= MAX_LEVEL && !bricks.some(b => !b.steel) ? 1 : level);
+            $('overlay').classList.add('hidden');
+            state = 'playing';
+        });
+        $('restart').addEventListener('click', () => {
+            newGame(1);
             $('overlay').classList.add('hidden');
             state = 'playing';
         });
@@ -361,7 +515,8 @@
         });
         document.addEventListener('keyup', e => { keys[e.key.length === 1 ? e.key.toLowerCase() : e.key] = false; });
 
-        newGame();
+        newGame(reached);
+        menu();
         last = performance.now();
         requestAnimationFrame(loop);
     })();
