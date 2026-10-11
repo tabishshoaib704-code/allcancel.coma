@@ -6,9 +6,9 @@ The board is tall (480 × 720), leaving plenty of open space between the bricks 
 
 Levels 1–10 are a warm-up. **Level 11 starts Hard mode**: the ball jumps to 25% faster, the paddle shrinks by 20%, bricks get two extra hits (up to 7), unbreakable bricks double, power-ups drop half as often, and the wall starts falling right away. Bosses get 50% more health and bomb faster.
 
-**The last 50 levels (406–455) are a final stretch** that eases off: the ball is 20% slower, the paddle 30% wider, bricks take at most 5 hits, unbreakable bricks drop to 25%, power-ups drop twice as often and the wall falls half as fast again. The bosses on levels 425 and 450 have 30% less health and bomb less often. Within the final stretch, levels still get slightly harder one by one.
+**The last 50 levels (406–455) are the Final gauntlet**: very difficult, but tuned so every level can be beaten on 3 lives. The ball runs at 720–790, the paddle is 63–56 wide, bricks take up to 4 hits, 22% are unbreakable, fireballs are guaranteed every 12 bricks and the wall drops every 16–12 seconds. The bosses on 425 and 450 have 90 and 96 health and drop a bomb every 1.6 and 1.5 seconds. The settings were tuned with a simulated player that has human-like reaction time and hand speed. Within the gauntlet, each level is a little harder than the one before.
 
-Apart from the final stretch, every level is harder than the one before it:
+Apart from the Final gauntlet, every level is harder than the one before it:
 
 - the ball gets faster (330 → 1128 px/s) and the paddle gets smaller (135 → 41 px)
 - bricks take more hits to break (up to 7); their colour shifts from coral to violet the tougher they are, and they crack as you damage them
