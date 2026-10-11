@@ -2,15 +2,17 @@
 
 A browser brick-breaker game with **455 levels**. Open `index.html` in any browser to play — no install or build step.
 
+Levels 1–10 are a warm-up. **Level 11 starts Hard mode**: the ball jumps to 25% faster, the paddle shrinks by 20%, bricks get two extra hits (up to 7), unbreakable bricks double, power-ups drop half as often, and the wall starts falling right away. Bosses get 50% more health and bomb faster.
+
 Every level is harder than the one before it:
 
-- the ball gets faster (330 → 902 px/s) and the paddle gets smaller (90 → 34 px)
+- the ball gets faster (330 → 1128 px/s) and the paddle gets smaller (90 → 27 px)
 - bricks take more hits to break (up to 7); their colour shifts from coral to violet the tougher they are, and they crack as you damage them
 - dark riveted iron bricks appear from level 6 and can't be broken
-- from level 12 the whole wall creeps down toward you, faster each level, and costs a life if it reaches the glowing red line
+- from level 11 the whole wall creeps down toward you, faster each level, and costs a life if it reaches the glowing red line
 - power-ups get rarer
 
-**Boss fights** every 25 levels (25, 50, 75 … 450): a giant brick with eyes that slides around and drops bombs. Don't let a bomb touch your paddle. The first boss takes 30 hits; each one after takes 6 more (up to 132), moves faster and bombs more often. Below a third of its health it gets angry and speeds up.
+**Boss fights** every 25 levels (25, 50, 75 … 450): a giant brick with eyes that slides around and drops bombs. Don't let a bomb touch your paddle. The first boss takes 45 hits; each one after takes 9 more (up to 198), moves faster and bombs more often. Below a third of its health it gets angry and speeds up.
 
 The look is gritty neon: a grainy dark backdrop with soft colour glows, rough chipped bricks, a glowing paddle and ball with a light trail, tumbling debris, and a dotted aiming guide that sweeps back and forth before each launch — fire when it points where you want the ball to go. It renders sharply on high-resolution screens.
 
