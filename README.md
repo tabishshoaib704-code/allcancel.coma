@@ -16,6 +16,8 @@ The look is gritty neon: a grainy dark backdrop with soft colour glows, rough ch
 
 Your highest level is saved in the browser, so you can continue where you left off.
 
+**Level select:** press **Choose level** on the start or game-over screen to see all 455 levels in groups of 25, with each group's boss level marked. Any level up to your highest is unlocked and can be replayed. Beating a level earns stars, kept at your best: ★★★ for losing no lives on it, ★★ for losing one, ★ otherwise. The header shows how many levels you've unlocked and completed, and your total stars.
+
 **Controls:** move with the mouse, touch, or ← → / A D · launch with click, tap, or Space · pause with P · mute with M or the speaker button.
 
 **Sound:** every sound is synthesised live in the browser (no audio files): paddle and wall bounces, brick hits and breaks (pitch rises with brick toughness), clinks off steel, power-up jingles, a fiery whoosh for the fireball, boss hits, bomb drops and explosions, the creeping wall's rumble, and level-up, game-over and victory tunes. Sound starts after your first click or key press, and the mute setting is remembered.

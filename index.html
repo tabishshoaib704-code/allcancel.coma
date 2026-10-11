@@ -68,6 +68,41 @@
         button:hover { filter: brightness(1.1); }
         button.hidden { display: none; }
         .help { text-align: center; color: var(--muted); font-size: .9rem; margin-top: .75rem; }
+
+        /* level select */
+        .levels {
+            position: absolute; inset: 0; display: flex; flex-direction: column;
+            background: var(--bg); border-radius: 0 0 16px 16px; overflow: hidden;
+        }
+        .levels[hidden] { display: none; }
+        .levels-head {
+            display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+            padding: .9rem 1rem .7rem; border-bottom: 1px solid rgba(255,255,255,.08);
+        }
+        .levels-head h2 { font-size: 1.25rem; font-weight: 800; }
+        .levels-head p { color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; }
+        .levels-head button { padding: .45rem 1.1rem; font-size: .9rem; }
+        .level-scroll { flex: 1; overflow-y: auto; padding: 0 1rem 1rem; overscroll-behavior: contain; }
+        .level-group h3 {
+            position: sticky; top: 0; z-index: 1; padding: .7rem 0 .45rem; background: var(--bg);
+            font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+        }
+        .level-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .4rem; }
+        .level-grid button {
+            all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; gap: .1rem; aspect-ratio: 1 / .82; min-width: 0;
+            border-radius: 10px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
+            color: var(--text); font-weight: 800; font-size: 1rem; font-variant-numeric: tabular-nums;
+        }
+        .level-grid button:hover:not(:disabled) { background: rgba(124,243,255,.14); border-color: rgba(124,243,255,.5); }
+        .level-grid button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .level-grid .stars { font-size: .62rem; letter-spacing: .08em; color: rgba(255,255,255,.22); line-height: 1; }
+        .level-grid .stars b { color: #ffc94d; font-weight: inherit; }
+        .level-grid .boss { border-color: rgba(192,107,255,.55); background: rgba(192,107,255,.14); }
+        .level-grid .boss .tag { font-size: .55rem; letter-spacing: .1em; color: #d7b3ff; }
+        .level-grid .current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 14px -2px rgba(124,243,255,.6); }
+        .level-grid button:disabled { cursor: default; opacity: .32; }
+        .level-grid button:disabled .stars { visibility: hidden; }
     </style>
 </head>
 <body>
@@ -94,8 +129,19 @@
                 <ul class="stats" id="ov-stats"></ul>
                 <div class="buttons">
                     <button id="start">Play</button>
+                    <button id="levels-btn" class="secondary">Choose level</button>
                     <button id="restart" class="secondary hidden">Start over from level 1</button>
                 </div>
+            </div>
+            <div class="levels" id="levels" hidden>
+                <div class="levels-head">
+                    <div>
+                        <h2>Choose a level</h2>
+                        <p id="levels-progress"></p>
+                    </div>
+                    <button class="secondary" id="levels-back">Back</button>
+                </div>
+                <div class="level-scroll" id="level-scroll"></div>
             </div>
         </div>
         <p class="help">Move: mouse, touch, or ← → / A D &nbsp;·&nbsp; Launch: click, tap, or Space &nbsp;·&nbsp; Pause: P &nbsp;·&nbsp; Sound: M</p>
@@ -319,17 +365,18 @@
         })();
 
         /* ---------- state ---------- */
-        let best = 0, reached = 1;
+        let best = 0, reached = 1, stars = {};   // stars: best rating per completed level
         try {
             best = +localStorage.getItem('brickBreakerBest') || 0;
             reached = Math.min(+localStorage.getItem('brickBreakerLevel') || 1, MAX_LEVEL);
+            stars = JSON.parse(localStorage.getItem('brickBreakerStars') || '{}') || {};
         } catch (e) {}
         $('best').textContent = best;
 
         const keys = {};
         let paddle, balls, bricks, drops, particles, diff, boss = null, bombs = [];
         let score = 0, lives = 3, level = 1, state = 'menu', last;
-        let sinceFire = 0, wideTimer = 0, slowTimer = 0, fireTimer = 0, descendTimer = 0, shifted = 0, aimT = 0, shake = 0;
+        let livesAtStart = 3, sinceFire = 0, wideTimer = 0, slowTimer = 0, fireTimer = 0, descendTimer = 0, shifted = 0, aimT = 0, shake = 0;
         const aimAngle = () => -Math.PI / 2 + Math.sin(aimT * 2.2) * 0.9;
 
         function hud() {
@@ -342,6 +389,7 @@
             try {
                 localStorage.setItem('brickBreakerLevel', reached);
                 localStorage.setItem('brickBreakerBest', best);
+                localStorage.setItem('brickBreakerStars', JSON.stringify(stars));
             } catch (e) {}
         }
 
@@ -357,6 +405,7 @@
         }
 
         function loadLevel() {
+            livesAtStart = lives;
             diff = { ...difficulty(level) };
             boss = isBossLevel(level) ? makeBoss(level) : null;
             if (boss) diff.descend = 0;                    // the boss moves instead of the wall
@@ -639,6 +688,8 @@
         }
 
         function levelComplete() {
+            const lost = livesAtStart - lives;
+            stars[level] = Math.max(stars[level] || 0, lost <= 0 ? 3 : lost === 1 ? 2 : 1);
             const bonus = 100 * lives + level * 20;
             score += bonus;
             if (score > best) best = score;
@@ -662,6 +713,7 @@
                 diff.steel ? `Steel bricks <b>${Math.round(diff.steel * 100)}%</b>` : '',
                 diff.descend ? `Wall drops every <b>${diff.descend.toFixed(1)}s</b>` : '',
             ].filter(Boolean);
+            state = 'between';   // set before showOverlay so it hides the level-select button
             if (boss) sfx.bossWarn(); else sfx.levelUp();
             if (boss) {
                 stats.splice(2, 99, `Boss health <b>${boss.maxHp} hits</b>`, `Bomb every <b>${boss.bombEvery.toFixed(1)}s</b>`);
@@ -1062,6 +1114,7 @@
             $('ov-stats').innerHTML = stats.map(s => `<li>${s}</li>`).join('');
             $('start').textContent = btn;
             $('restart').classList.toggle('hidden', !showRestart);
+            $('levels-btn').classList.toggle('hidden', state === 'between');
             $('overlay').classList.remove('hidden');
         }
 
@@ -1081,6 +1134,66 @@
                 $('restart').classList.remove('hidden');
             }
         }
+
+        /* ---------- level select ---------- */
+        const levelButtons = [];
+        (function buildLevelSelect() {
+            const scroll = $('level-scroll');
+            for (let start = 1; start <= MAX_LEVEL; start += BOSS_EVERY) {
+                const end = Math.min(start + BOSS_EVERY - 1, MAX_LEVEL);
+                const group = document.createElement('section');
+                group.className = 'level-group';
+                group.innerHTML = `<h3>Levels ${start}–${end}</h3>`;
+                const grid = document.createElement('div');
+                grid.className = 'level-grid';
+                for (let L = start; L <= end; L++) {
+                    const b = document.createElement('button');
+                    b.dataset.level = L;
+                    if (isBossLevel(L)) b.classList.add('boss');
+                    b.innerHTML = `<span>${L}</span>` + (isBossLevel(L) ? '<span class="tag">BOSS</span>' : '') + '<span class="stars"></span>';
+                    grid.append(b);
+                    levelButtons[L] = b;
+                }
+                group.append(grid);
+                scroll.append(group);
+            }
+            scroll.addEventListener('click', e => {
+                const b = e.target.closest('button[data-level]');
+                if (b && !b.disabled) startAt(+b.dataset.level);
+            });
+        })();
+
+        function openLevels() {
+            const done = Object.keys(stars).length;
+            const total = Object.values(stars).reduce((a, b) => a + b, 0);
+            $('levels-progress').textContent = `${reached} of ${MAX_LEVEL} unlocked · ${done} completed · ${total} ★`;
+            for (let L = 1; L <= MAX_LEVEL; L++) {
+                const b = levelButtons[L], n = stars[L] || 0, locked = L > reached;
+                b.disabled = locked;
+                b.classList.toggle('current', L === reached);
+                b.querySelector('.stars').innerHTML = '<b>' + '★'.repeat(n) + '</b>' + '★'.repeat(3 - n);
+                b.setAttribute('aria-label', `Level ${L}${isBossLevel(L) ? ', boss' : ''}${locked ? ', locked' : n ? `, ${n} star${n > 1 ? 's' : ''}` : ''}`);
+            }
+            $('overlay').classList.add('hidden');
+            $('levels').hidden = false;
+            levelButtons[reached].scrollIntoView({ block: 'center' });
+            levelButtons[reached].focus({ preventScroll: true });
+        }
+
+        function closeLevels() {
+            $('levels').hidden = true;
+            $('overlay').classList.remove('hidden');
+        }
+
+        function startAt(L) {
+            $('levels').hidden = true;
+            newGame(L);
+            $('overlay').classList.add('hidden');
+            state = 'playing';
+        }
+
+        $('levels-btn').addEventListener('click', openLevels);
+        $('levels-back').addEventListener('click', closeLevels);
 
         const soundBtn = $('sound');
         function showSound() {
@@ -1120,6 +1233,7 @@
             if (e.key === ' ' || e.key.startsWith('Arrow')) e.preventDefault();
             if (e.key === ' ' && state === 'playing') launch();
             if (e.key === 'm' || e.key === 'M') { sfx.toggle(); showSound(); }
+            if (e.key === 'Escape' && !$('levels').hidden) closeLevels();
             if ((e.key === 'p' || e.key === 'P') && (state === 'playing' || state === 'paused')) {
                 state = state === 'playing' ? 'paused' : 'playing';
             }
