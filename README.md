@@ -8,7 +8,7 @@ Levels 1–10 are a warm-up. **Level 11 starts Hard mode**: the ball jumps to 25
 
 Every level is harder than the one before it:
 
-- the ball gets faster (330 → 1128 px/s) and the paddle gets smaller (90 → 27 px)
+- the ball gets faster (330 → 1128 px/s) and the paddle gets smaller (135 → 41 px)
 - bricks take more hits to break (up to 7); their colour shifts from coral to violet the tougher they are, and they crack as you damage them
 - dark riveted iron bricks appear from level 6 and can't be broken
 - from level 11 the whole wall creeps down toward you, faster each level, and costs a life if it reaches the glowing red line

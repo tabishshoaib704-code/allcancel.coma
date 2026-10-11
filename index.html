@@ -191,8 +191,8 @@
             return {
                 // ball: 330 px/s on level 1; hard mode is 25% faster (558 on level 11 → 1128 on 455)
                 speed: 1.1 * (300 + 360 * (1 - Math.exp(-(L - 1) / 30)) + 160 * t) * (hard ? 1.25 : 1),
-                // paddle: 90 px on level 1; hard mode is 20% narrower (54 px on level 11 → 27 px)
-                paddle: (34 + 56 * Math.exp(-(L - 1) / 20)) * (hard ? .8 : 1),
+                // paddle: 135 on level 1, shrinking as levels get harder; hard mode is 20% narrower (82 on level 11 → 41)
+                paddle: (34 + 56 * Math.exp(-(L - 1) / 20)) * (hard ? .8 : 1) * 1.5,
                 rows: Math.min(4 + Math.ceil(L / 2), 13),
                 maxHp: Math.min(1 + Math.floor((L - 1) / 3) + (hard ? 2 : 0), 7),
                 steel: L < 6 ? 0 : Math.min(0.05 + (L - 6) * 0.004 + (hard ? .08 : 0), 0.38),
@@ -438,7 +438,7 @@
             diff = { ...difficulty(level) };
             boss = isBossLevel(level) ? makeBoss(level) : null;
             if (boss) diff.descend = 0;                    // the boss moves instead of the wall
-            if (level === MAX_LEVEL) diff.paddle *= 2;     // the final level gets a double-width paddle (27 → 54)
+            if (level === MAX_LEVEL) diff.paddle *= 2;     // the final level gets a double-width paddle (41 → 82)
             bricks = buildLevel(level);
             shifted = 0;
             descendTimer = diff.descend;
