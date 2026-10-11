@@ -18,4 +18,6 @@ Your highest level is saved in the browser, so you can continue where you left o
 
 **Controls:** move with the mouse, touch, or ← → / A D · launch with click, tap, or Space · pause with P.
 
-**Power-ups:** W wide paddle · M multi-ball · S slow ball · ♥ extra life
+**Power-ups:** W wide paddle · M multi-ball · S slow ball · F fireball · ♥ extra life
+
+**Fireball (F):** for 8 seconds the ball bursts into flame and smashes straight through bricks in one hit, however tough, without bouncing. Unbreakable bricks still stop it, and against a boss each hit counts triple. It flickers just before it runs out.

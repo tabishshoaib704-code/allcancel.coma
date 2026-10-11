@@ -72,7 +72,7 @@
             <canvas id="game" width="480" height="600"></canvas>
             <div class="overlay" id="overlay">
                 <h2 id="ov-title">455 Levels</h2>
-                <p id="ov-text">Every level is harder than the last: faster ball, smaller paddle, tougher bricks, unbreakable steel, and walls that push down on you. Catch power-ups: <b style="color:#7cf3ff">W</b>ide, <b style="color:#9dff8a">M</b>ulti-ball, <b style="color:#ff8ad8">S</b>low, <b style="color:#ff6b81">♥</b> extra life.</p>
+                <p id="ov-text">Every level is harder than the last: faster ball, smaller paddle, tougher bricks, unbreakable steel, and walls that push down on you. Catch power-ups: <b style="color:#7cf3ff">W</b>ide, <b style="color:#9dff8a">M</b>ulti-ball, <b style="color:#ff8ad8">S</b>low, <b style="color:#ff9a3c">F</b>ireball, <b style="color:#ff6b81">♥</b> extra life.</p>
                 <ul class="stats" id="ov-stats"></ul>
                 <div class="buttons">
                     <button id="start">Play</button>
@@ -103,7 +103,8 @@
         // brick colour shifts along the spectrum the more hits it needs
         const HP_COLORS = ['#ff5d73', '#ff8a4c', '#ffc94d', '#7dff8a', '#4de1ff', '#7a8cff', '#c06bff'];
         const STEEL = '#9aa6c7';
-        const POWERS = { W: '#7cf3ff', M: '#9dff8a', S: '#ff8ad8', L: '#ff6b81' };
+        const POWERS = { W: '#7cf3ff', M: '#9dff8a', S: '#ff8ad8', L: '#ff6b81', F: '#ff9a3c' };
+        const FIRE_TIME = 8;   // seconds the fireball lasts
         const PADDLE_Y = H - 30, DANGER_Y = PADDLE_Y - 45;
 
         /* ---------- difficulty curve: everything gets worse every level ---------- */
@@ -209,7 +210,7 @@
         const keys = {};
         let paddle, balls, bricks, drops, particles, diff, boss = null, bombs = [];
         let score = 0, lives = 3, level = 1, state = 'menu', last;
-        let wideTimer = 0, slowTimer = 0, descendTimer = 0, shifted = 0, aimT = 0, shake = 0;
+        let wideTimer = 0, slowTimer = 0, fireTimer = 0, descendTimer = 0, shifted = 0, aimT = 0, shake = 0;
         const aimAngle = () => -Math.PI / 2 + Math.sin(aimT * 2.2) * 0.9;
 
         function hud() {
@@ -252,7 +253,7 @@
         function resetBall() {
             balls = [{ x: paddle.x, y: paddle.y - 10, vx: 0, vy: 0, r: 7, stuck: true }];
             drops = []; bombs = [];
-            wideTimer = slowTimer = 0;
+            wideTimer = slowTimer = fireTimer = 0;
             paddle.w = diff.paddle;
         }
 
@@ -305,21 +306,21 @@
             burst(cx, cy, brickColor({ hp: br.maxHp }));
             if (Math.random() < diff.drop) {
                 const r = Math.random();
-                const kind = r < 0.08 ? 'L' : r < 0.4 ? 'W' : r < 0.7 ? 'M' : 'S';
+                const kind = r < 0.08 ? 'L' : r < 0.3 ? 'W' : r < 0.52 ? 'M' : r < 0.74 ? 'F' : 'S';
                 drops.push({ x: cx, y: br.y, kind });
             }
             hud();
         }
 
-        function hitBoss() {
+        function hitBoss(dmg = 1) {
             // a short shield after each hit so a ball trapped above the boss can't drain it in seconds
             const now = performance.now();
             if (now - (boss.lastHit || 0) < 300) return;
             boss.lastHit = now;
-            boss.hp--; boss.flash = now; score += 5; shake = Math.max(shake, 3);
+            boss.hp = Math.max(0, boss.hp - dmg); boss.flash = now; score += 5 * dmg; shake = Math.max(shake, 3 * dmg);
             burst(Math.max(boss.x, Math.min(balls[0] ? balls[0].x : 0, boss.x + boss.w)), boss.y + boss.h, '#c06bff', 6);
             if (Math.random() < diff.drop * 0.6) {
-                const kinds = ['W', 'M', 'S', 'L'];
+                const kinds = ['W', 'M', 'S', 'L', 'F'];
                 drops.push({ x: boss.x + boss.w / 2, y: boss.y + boss.h, kind: kinds[Math.floor(Math.random() * kinds.length)] });
             }
             if (boss.hp <= 0) {
@@ -334,6 +335,7 @@
             if (kind === 'W') { wideTimer = 10; paddle.w = diff.paddle * 1.6; }
             if (kind === 'S') { slowTimer = 8; rescaleBalls(); }
             if (kind === 'L') lives++;
+            if (kind === 'F') fireTimer = FIRE_TIME;
             if (kind === 'M') {
                 const extra = [];
                 for (const b of balls.slice(0, 3)) {
@@ -370,6 +372,16 @@
             paddle.x = Math.max(BORDER + paddle.w / 2, Math.min(W - BORDER - paddle.w / 2, paddle.x));
 
             if (wideTimer > 0 && (wideTimer -= dt) <= 0) paddle.w = diff.paddle;
+            if (fireTimer > 0) {
+                fireTimer -= dt;
+                for (const b of balls) {   // embers rising off the fireball
+                    if (b.stuck || particles.length >= MAX_PARTICLES || Math.random() > .7) continue;
+                    const color = Math.random() < .5 ? '#ffd166' : '#ff6a1a';
+                    particles.push({ x: b.x + (Math.random() - .5) * 8, y: b.y + (Math.random() - .5) * 8,
+                        vx: (Math.random() - .5) * 40, vy: -20 - Math.random() * 40, life: .35, color, rgb: rgbOf(color),
+                        size: 1.5 + Math.random() * 2, rot: Math.random() * 6, spin: (Math.random() - .5) * 10, g: -.15 });
+                }
+            }
             if (slowTimer > 0 && (slowTimer -= dt) <= 0) rescaleBalls();
 
             // creeping wall: bricks step down; reaching the danger line costs a life
@@ -413,6 +425,11 @@
                         const cy = Math.max(br.y, Math.min(b.y, br.y + BRICK_H));
                         const dx = b.x - cx, dy = b.y - cy;
                         if (dx * dx + dy * dy <= b.r * b.r) {
+                            if (fireTimer > 0 && !br.steel) {
+                                burst(br.x + BRICK_W / 2, br.y + BRICK_H / 2, '#ff9a3c', 6);
+                                br.hp = 1; hitBrick(br);
+                                break;
+                            }
                             if (Math.abs(dx) > Math.abs(dy)) { b.vx = Math.sign(dx || -b.vx) * Math.abs(b.vx); b.x = cx + Math.sign(dx || 1) * b.r; }
                             else { b.vy = Math.sign(dy || -b.vy) * Math.abs(b.vy); b.y = cy + Math.sign(dy || 1) * b.r; }
                             hitBrick(br);
@@ -428,7 +445,7 @@
                             if (dx === 0 && dy === 0) { b.y = boss.y + boss.h + b.r; b.vy = Math.abs(b.vy); }   // boss moved onto the ball
                             else if (Math.abs(dx) > Math.abs(dy)) { b.vx = Math.sign(dx) * Math.abs(b.vx); b.x = cx + Math.sign(dx) * b.r; }
                             else { b.vy = Math.sign(dy) * Math.abs(b.vy); b.y = cy + Math.sign(dy) * b.r; }
-                            hitBoss();
+                            hitBoss(fireTimer > 0 ? 3 : 1);
                         }
                     }
                 }
@@ -477,7 +494,7 @@
 
             for (let i = particles.length - 1; i >= 0; i--) {
                 const p = particles[i];
-                p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 400 * dt; p.life -= dt; p.rot += p.spin * dt;
+                p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 400 * (p.g ?? 1) * dt; p.life -= dt; p.rot += p.spin * dt;
                 if (p.life <= 0) particles.splice(i, 1);
             }
 
@@ -751,6 +768,14 @@
         });
         const dot = color => sprite(16, 16, g => { g.fillStyle = color; g.beginPath(); g.arc(8, 8, 7, 0, Math.PI * 2); g.fill(); });
         const TRAIL_WHITE = dot('#ffffff'), TRAIL_PINK = dot('#ff8ad8');
+        const TRAIL_FIRE = [dot('#ff3d1a'), dot('#ff7a1a'), dot('#ffd166')];   // older → newer
+        const FIRE_SPRITE = sprite((BALL_R + BALL_PAD) * 2, (BALL_R + BALL_PAD) * 2, (g, w) => {
+            const c = w / 2;
+            g.shadowColor = '#ff6a1a'; g.shadowBlur = 20;
+            const gr = g.createRadialGradient(c - 1.5, c - 1.5, 0, c, c, BALL_R + 1);
+            gr.addColorStop(0, '#fffbe6'); gr.addColorStop(.35, '#ffd166'); gr.addColorStop(.75, '#ff7a1a'); gr.addColorStop(1, '#e8290b');
+            g.fillStyle = gr; g.beginPath(); g.arc(c, c, BALL_R + 1, 0, Math.PI * 2); g.fill();
+        });
 
         const PADDLE_GLOW = ['rgba(220,228,255,.45)', '#7cf3ff'].map(c => sprite(120, 40, g => {
             g.shadowColor = c; g.shadowBlur = 10; g.fillStyle = '#000';
@@ -787,18 +812,23 @@
         }
 
         function drawBall(b) {
-            // motion trail (pink while the slow power-up is on)
+            const fire = fireTimer > 0;
+            // motion trail: a longer flame while on fire, pink while slowed, white otherwise
             (b.trail ||= []).push({ x: b.x, y: b.y });
-            if (b.trail.length > 10 || b.stuck) b.trail.shift();
-            const dotImg = slowTimer > 0 ? TRAIL_PINK : TRAIL_WHITE;
+            const maxTrail = fire ? 14 : 10;
+            while (b.trail.length > maxTrail || (b.stuck && b.trail.length)) b.trail.shift();
             b.trail.forEach((p, i) => {
-                const k = (i + 1) / b.trail.length, r = b.r * k;
-                ctx.globalAlpha = k * .22;
-                ctx.drawImage(dotImg, p.x - r, p.y - r, r * 2, r * 2);
+                const k = (i + 1) / b.trail.length;
+                const r = b.r * (fire ? .5 + k * .9 : k);
+                ctx.globalAlpha = k * (fire ? .5 : .22);
+                const img = fire ? TRAIL_FIRE[Math.min(2, Math.floor(k * 3))] : slowTimer > 0 ? TRAIL_PINK : TRAIL_WHITE;
+                ctx.drawImage(img, p.x - r, p.y - r, r * 2, r * 2);
             });
             ctx.globalAlpha = 1;
             const half = BALL_R + BALL_PAD;
-            ctx.drawImage(BALL_SPRITE, b.x - half, b.y - half, half * 2, half * 2);
+            // flicker the fire when it is about to run out
+            const fading = fire && fireTimer < 1.5 && Math.floor(fireTimer * 8) % 2 === 0;
+            ctx.drawImage(fire && !fading ? FIRE_SPRITE : BALL_SPRITE, b.x - half, b.y - half, half * 2, half * 2);
         }
 
         function draw() {
