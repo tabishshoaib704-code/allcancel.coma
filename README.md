@@ -6,7 +6,9 @@ The board is tall (480 × 720), leaving plenty of open space between the bricks 
 
 Levels 1–10 are a warm-up. **Level 11 starts Hard mode**: the ball jumps to 25% faster, the paddle shrinks by 20%, bricks get two extra hits (up to 7), unbreakable bricks double, power-ups drop half as often, and the wall starts falling right away. Bosses get 50% more health and bomb faster.
 
-Every level is harder than the one before it:
+**The last 50 levels (406–455) are a final stretch** that eases off: the ball is 20% slower, the paddle 30% wider, bricks take at most 5 hits, unbreakable bricks drop to 25%, power-ups drop twice as often and the wall falls half as fast again. The bosses on levels 425 and 450 have 30% less health and bomb less often. Within the final stretch, levels still get slightly harder one by one.
+
+Apart from the final stretch, every level is harder than the one before it:
 
 - the ball gets faster (330 → 1128 px/s) and the paddle gets smaller (135 → 41 px)
 - bricks take more hits to break (up to 7); their colour shifts from coral to violet the tougher they are, and they crack as you damage them
