@@ -728,15 +728,17 @@
 
         function drawPaddle() {
             const { x, y, w, h } = paddle, left = x - w / 2;
-            const wide = wideTimer > 0;
-            const g = ctx.createLinearGradient(left, 0, left + w, 0);
-            g.addColorStop(0, wide ? '#7cf3ff' : '#6d7cff'); g.addColorStop(.5, wide ? '#c9fbff' : '#9ad9ff'); g.addColorStop(1, wide ? '#7cf3ff' : '#b78cff');
+            const rim = wideTimer > 0 ? '#7cf3ff' : 'rgba(225,230,245,.75)';   // edge turns cyan while wide
+            const g = ctx.createLinearGradient(0, y, 0, y + h);
+            g.addColorStop(0, '#2b2d36'); g.addColorStop(.45, '#0d0e13'); g.addColorStop(1, '#000000');
             ctx.save();
-            ctx.shadowColor = wide ? '#7cf3ff' : '#8fa0ff'; ctx.shadowBlur = 12;
+            ctx.shadowColor = wideTimer > 0 ? '#7cf3ff' : 'rgba(220,228,255,.45)'; ctx.shadowBlur = 10;
             ctx.fillStyle = g; rect(left, y, w, h, h / 2);
             ctx.restore();
-            ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.fillRect(left + h / 2, y + 2, w - h, 1.5);
-            ctx.fillStyle = 'rgba(0,0,0,.3)';
+            ctx.strokeStyle = rim; ctx.lineWidth = 1;
+            rr(ctx, left + .5, y + .5, w - 1, h - 1, h / 2); ctx.stroke();
+            ctx.fillStyle = 'rgba(255,255,255,.22)'; ctx.fillRect(left + h / 2, y + 2, w - h, 1);
+            ctx.fillStyle = 'rgba(255,255,255,.1)';
             for (let k = left + 8; k < left + w - 8; k += 9) ctx.fillRect(k, y + 5, 1, h - 7);   // grip notches
         }
 
