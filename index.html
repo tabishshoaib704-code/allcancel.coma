@@ -597,7 +597,7 @@
             lives--; hud(); shake = 10;
             sfx.lose();
             if (lives <= 0) { toast.until = 0; return endGame(reason), false; }
-            showToast('Better luck next time!', `${lives} ${lives === 1 ? 'life' : 'lives'} left`);
+            showToast('Better luck next time, Kazim bondi!', `${lives} ${lives === 1 ? 'life' : 'lives'} left`);
             resetBall();
             return true;
         }
@@ -1212,7 +1212,7 @@
             if (score > best) best = score;
             $('best').textContent = best;
             save();
-            showOverlay('Better luck next time!', 'Game over. ' + reason + ' You scored ' + score + ' on level ' + level + '.', [],
+            showOverlay('Better luck next time, Kazim bondi!', 'Game over. ' + reason + ' You scored ' + score + ' on level ' + level + '.', [],
                 'Retry level ' + level, level > 1);
         }
 
