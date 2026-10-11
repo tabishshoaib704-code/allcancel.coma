@@ -440,7 +440,7 @@
         }
 
         function newGame(startLevel) {
-            score = 0; lives = 3; level = startLevel; sinceFire = 0;
+            score = 0; lives = 3; level = startLevel; sinceFire = 0; toast.until = 0;
             paddle = { x: W / 2, y: PADDLE_Y, w: 90, h: 12 };
             particles = [];
             loadLevel();
@@ -553,10 +553,18 @@
             }
         }
 
+        // short message shown over the game when a life is lost
+        const toast = { title: '', sub: '', start: 0, until: 0 };
+        function showToast(title, sub, ms = 2400) {
+            toast.title = title; toast.sub = sub;
+            toast.start = performance.now(); toast.until = toast.start + ms;
+        }
+
         function loseLife(reason) {
             lives--; hud(); shake = 10;
             sfx.lose();
-            if (lives <= 0) return endGame(reason), false;
+            if (lives <= 0) { toast.until = 0; return endGame(reason), false; }
+            showToast('Better luck next time, Saqib!', `${lives} ${lives === 1 ? 'life' : 'lives'} left`);
             resetBall();
             return true;
         }
@@ -1036,6 +1044,24 @@
             ctx.drawImage(fire && !fading ? FIRE_SPRITE : BALL_SPRITE, b.x - half, b.y - half, half * 2, half * 2);
         }
 
+        function drawToast(now) {
+            const age = now - toast.start, left = toast.until - now;
+            const alpha = Math.min(1, age / 150, left / 400);
+            const pop = 1 + .08 * Math.max(0, 1 - age / 180);              // tiny pop when it appears
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.translate(W / 2, H * .68); ctx.scale(pop, pop);
+            ctx.font = '800 19px Inter, system-ui, sans-serif';
+            const w = Math.min(W - 2 * BORDER - 20, ctx.measureText(toast.title).width + 48), h = 62;
+            ctx.fillStyle = 'rgba(7,11,24,.85)'; rr(ctx, -w / 2, -h / 2, w, h, 16); ctx.fill();
+            ctx.strokeStyle = 'rgba(255,107,129,.7)'; ctx.lineWidth = 1.5; rr(ctx, -w / 2 + .75, -h / 2 + .75, w - 1.5, h - 1.5, 16); ctx.stroke();
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#e6e9f5'; ctx.fillText(toast.title, 0, -9, w - 24);
+            ctx.font = '600 13px Inter, system-ui, sans-serif'; ctx.fillStyle = '#ff8a9b';
+            ctx.fillText(toast.sub, 0, 15);
+            ctx.restore();
+        }
+
         function draw() {
             const now = performance.now();
             const sx = shake > 0 ? (Math.random() - .5) * shake : 0, sy = shake > 0 ? (Math.random() - .5) * shake : 0;
@@ -1094,6 +1120,7 @@
                 ctx.fillStyle = 'rgba(230,233,245,.55)'; ctx.font = '500 14px Inter, system-ui, sans-serif';
                 ctx.fillText('Click, tap, or press Space to launch', W / 2, DANGER_Y - 24);
             }
+            if (state === 'playing' && now < toast.until) drawToast(now);
             if (state === 'paused') {
                 ctx.fillStyle = 'rgba(7,11,24,.6)'; ctx.fillRect(0, 0, W, H);
                 ctx.fillStyle = '#e6e9f5'; ctx.font = '800 30px Inter, system-ui, sans-serif';
