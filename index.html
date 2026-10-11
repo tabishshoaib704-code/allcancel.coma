@@ -86,9 +86,9 @@
     <script>
     (() => {
         const canvas = document.getElementById('game');
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { alpha: false });
         const W = canvas.width, H = canvas.height;      // logical size; drawn at device resolution
-        const DPR = Math.min(window.devicePixelRatio || 1, 2);
+        let DPR = Math.min(window.devicePixelRatio || 1, 2);   // stepped down if frames run slow
         canvas.width = W * DPR; canvas.height = H * DPR;
         const $ = id => document.getElementById(id);
 
@@ -271,10 +271,21 @@
             }
         }
 
+        const rgbCache = {};
+        function rgbOf(hex) {
+            if (!rgbCache[hex]) {
+                const h = hex.length === 4 ? '#' + [...hex.slice(1)].map(c => c + c).join('') : hex, n = parseInt(h.slice(1), 16);
+                rgbCache[hex] = `${n >> 16},${(n >> 8) & 255},${n & 255}`;
+            }
+            return rgbCache[hex];
+        }
+
+        const MAX_PARTICLES = 220, MAX_BALLS = 12;
         function burst(x, y, color, n = 10) {
+            if (particles.length > MAX_PARTICLES) particles.splice(0, particles.length - MAX_PARTICLES);
             for (let i = 0; i < n; i++) {
                 const a = Math.random() * Math.PI * 2, s = 40 + Math.random() * 160;
-                particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.5, color,
+                particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.5, color, rgb: rgbOf(color),
                     size: 1.5 + Math.random() * 3.5, rot: Math.random() * 6, spin: (Math.random() - .5) * 20 });
             }
         }
@@ -331,7 +342,7 @@
                         extra.push({ x: b.x, y: b.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: b.r, stuck: b.stuck });
                     }
                 }
-                balls.push(...extra);
+                balls.push(...extra.slice(0, Math.max(0, MAX_BALLS - balls.length)));
             }
             hud();
         }
@@ -633,15 +644,18 @@
         function cracks(br) {
             const dmg = 1 - br.hp / br.maxHp;
             if (dmg <= 0) return;
-            const rand = rng(Math.round(br.x * 31 + br.maxHp));
-            ctx.strokeStyle = `rgba(10,8,20,${0.45 + dmg * 0.45})`; ctx.lineWidth = 1.2;
-            const n = Math.ceil(dmg * 4);
-            for (let i = 0; i < n; i++) {
-                let x = br.x + 5 + rand() * (BRICK_W - 10), y = br.y + 3;
-                ctx.beginPath(); ctx.moveTo(x, y);
-                for (let k = 0; k < 3; k++) { x += (rand() - .5) * 9; y += BRICK_H / 3 - 1.5; ctx.lineTo(x, y); }
-                ctx.stroke();
+            if (br.crackKey !== br.hp + ',' + br.y) {
+                br.crackKey = br.hp + ',' + br.y;
+                const rand = rng(Math.round(br.x * 31 + br.maxHp)), path = new Path2D();
+                for (let i = 0; i < Math.ceil(dmg * 4); i++) {
+                    let x = br.x + 5 + rand() * (BRICK_W - 10), y = br.y + 3;
+                    path.moveTo(x, y);
+                    for (let k = 0; k < 3; k++) { x += (rand() - .5) * 9; y += BRICK_H / 3 - 1.5; path.lineTo(x, y); }
+                }
+                br.crackPath = path;
             }
+            ctx.strokeStyle = `rgba(10,8,20,${0.45 + dmg * 0.45})`; ctx.lineWidth = 1.2;
+            ctx.stroke(br.crackPath);
         }
 
         function rect(x, y, w, h, r) { rr(ctx, x, y, w, h, r); ctx.fill(); }
@@ -686,10 +700,9 @@
             const target = balls[0] || { x: paddle.x, y: paddle.y };
             for (const ex of [x + w * .32, x + w * .68]) {
                 const ey = y + h * .45;
-                ctx.save(); ctx.shadowColor = angry ? '#ff4d6d' : '#7cf3ff'; ctx.shadowBlur = 14;
+                ctx.globalAlpha = .6; ctx.drawImage(EYE_GLOW[angry ? 1 : 0], ex - 26, ey - 26, 52, 52); ctx.globalAlpha = 1;
                 ctx.fillStyle = angry ? '#ffd6dc' : '#e6fbff';
                 ctx.beginPath(); ctx.ellipse(ex, ey, 13, angry ? 7 : 10, 0, 0, Math.PI * 2); ctx.fill();
-                ctx.restore();
                 const a = Math.atan2(target.y - ey, target.x - ex);
                 ctx.fillStyle = angry ? '#d90429' : '#0a0f24';
                 ctx.beginPath(); ctx.arc(ex + Math.cos(a) * 5, ey + Math.sin(a) * (angry ? 2 : 4), 4.5, 0, Math.PI * 2); ctx.fill();
@@ -717,24 +730,55 @@
         function drawBombs(now) {
             for (const bm of bombs) {
                 const pulse = .5 + .5 * Math.sin(now / 70);
-                ctx.save(); ctx.shadowColor = '#ff4d6d'; ctx.shadowBlur = 12 + pulse * 8;
+                ctx.globalAlpha = .55 + pulse * .45;
+                ctx.drawImage(BOMB_GLOW, bm.x - 22, bm.y - 22, 44, 44);
+                ctx.globalAlpha = 1;
                 ctx.fillStyle = '#2a0b14'; ctx.beginPath(); ctx.arc(bm.x, bm.y, 7, 0, Math.PI * 2); ctx.fill();
-                ctx.restore();
                 ctx.fillStyle = `rgba(255,77,109,${.6 + pulse * .4})`; ctx.beginPath(); ctx.arc(bm.x, bm.y, 3.5, 0, Math.PI * 2); ctx.fill();
                 ctx.strokeStyle = '#ffb703'; ctx.lineWidth = 1.5;                     // fuse spark
                 ctx.beginPath(); ctx.moveTo(bm.x, bm.y - 7); ctx.lineTo(bm.x + 2, bm.y - 11); ctx.stroke();
             }
         }
 
+        // soft glows rendered once, then stamped
+        const BALL_R = 7, BALL_PAD = 14;
+        const BALL_SPRITE = sprite((BALL_R + BALL_PAD) * 2, (BALL_R + BALL_PAD) * 2, (g, w) => {
+            const c = w / 2;
+            g.shadowColor = 'rgba(255,255,255,.85)'; g.shadowBlur = 16;
+            const gr = g.createRadialGradient(c - 2, c - 2, 0, c, c, BALL_R);
+            gr.addColorStop(0, '#ffffff'); gr.addColorStop(.7, '#ffffff'); gr.addColorStop(1, '#dfe3ee');
+            g.fillStyle = gr; g.beginPath(); g.arc(c, c, BALL_R, 0, Math.PI * 2); g.fill();
+        });
+        const dot = color => sprite(16, 16, g => { g.fillStyle = color; g.beginPath(); g.arc(8, 8, 7, 0, Math.PI * 2); g.fill(); });
+        const TRAIL_WHITE = dot('#ffffff'), TRAIL_PINK = dot('#ff8ad8');
+
+        const PADDLE_GLOW = ['rgba(220,228,255,.45)', '#7cf3ff'].map(c => sprite(120, 40, g => {
+            g.shadowColor = c; g.shadowBlur = 10; g.fillStyle = '#000';
+            rr(g, 10, 14, 100, 12, 6); g.fill();
+        }));
+
+        const DROP_SPRITES = {};
+        for (const k of Object.keys(POWERS)) DROP_SPRITES[k] = sprite(62, 50, g => {
+            g.shadowColor = POWERS[k]; g.shadowBlur = 16;
+            g.fillStyle = hexA(POWERS[k], .9); rr(g, 16, 16, 30, 18, 9); g.fill();
+            g.shadowBlur = 0; g.fillStyle = '#0a0f24'; g.font = '800 12px Inter, system-ui, sans-serif';
+            g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(k === 'L' ? '♥' : k, 31, 26);
+        });
+
+        const halo = (color, r) => sprite(r * 2, r * 2, g => {
+            const gr = g.createRadialGradient(r, r, 0, r, r, r);
+            gr.addColorStop(0, hexA(color, .9)); gr.addColorStop(.35, hexA(color, .45)); gr.addColorStop(1, hexA(color, 0));
+            g.fillStyle = gr; g.fillRect(0, 0, r * 2, r * 2);
+        });
+        const BOMB_GLOW = halo('#ff4d6d', 22), EYE_GLOW = [halo('#7cf3ff', 26), halo('#ff4d6d', 26)];
+
         function drawPaddle() {
             const { x, y, w, h } = paddle, left = x - w / 2;
             const rim = wideTimer > 0 ? '#7cf3ff' : 'rgba(225,230,245,.75)';   // edge turns cyan while wide
             const g = ctx.createLinearGradient(0, y, 0, y + h);
             g.addColorStop(0, '#2b2d36'); g.addColorStop(.45, '#0d0e13'); g.addColorStop(1, '#000000');
-            ctx.save();
-            ctx.shadowColor = wideTimer > 0 ? '#7cf3ff' : 'rgba(220,228,255,.45)'; ctx.shadowBlur = 10;
+            ctx.drawImage(PADDLE_GLOW[wideTimer > 0 ? 1 : 0], left - w * .1, y - 14, w * 1.2, 40);
             ctx.fillStyle = g; rect(left, y, w, h, h / 2);
-            ctx.restore();
             ctx.strokeStyle = rim; ctx.lineWidth = 1;
             rr(ctx, left + .5, y + .5, w - 1, h - 1, h / 2); ctx.stroke();
             ctx.fillStyle = 'rgba(255,255,255,.22)'; ctx.fillRect(left + h / 2, y + 2, w - h, 1);
@@ -743,36 +787,34 @@
         }
 
         function drawBall(b) {
-            const trail = slowTimer > 0 ? '#ff8ad8' : '#ffffff';   // trail turns pink while the slow power-up is on
-            // motion trail
+            // motion trail (pink while the slow power-up is on)
             (b.trail ||= []).push({ x: b.x, y: b.y });
-            if (b.trail.length > 12 || b.stuck) b.trail.shift();
-            ctx.save(); ctx.globalCompositeOperation = 'lighter';
+            if (b.trail.length > 10 || b.stuck) b.trail.shift();
+            const dotImg = slowTimer > 0 ? TRAIL_PINK : TRAIL_WHITE;
             b.trail.forEach((p, i) => {
-                const k = (i + 1) / b.trail.length;
-                ctx.fillStyle = hexA(trail, k * .2);
-                ctx.beginPath(); ctx.arc(p.x, p.y, b.r * k, 0, Math.PI * 2); ctx.fill();
+                const k = (i + 1) / b.trail.length, r = b.r * k;
+                ctx.globalAlpha = k * .22;
+                ctx.drawImage(dotImg, p.x - r, p.y - r, r * 2, r * 2);
             });
-            ctx.restore();
-            ctx.save();
-            ctx.shadowColor = 'rgba(255,255,255,.85)'; ctx.shadowBlur = 16;
-            const g = ctx.createRadialGradient(b.x - 2, b.y - 2, 0, b.x, b.y, b.r);
-            g.addColorStop(0, '#ffffff'); g.addColorStop(.7, '#ffffff'); g.addColorStop(1, '#dfe3ee');
-            ctx.fillStyle = g; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
-            ctx.restore();
+            ctx.globalAlpha = 1;
+            const half = BALL_R + BALL_PAD;
+            ctx.drawImage(BALL_SPRITE, b.x - half, b.y - half, half * 2, half * 2);
         }
 
         function draw() {
             const now = performance.now();
-            ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-            if (shake > 0) ctx.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake);
+            const sx = shake > 0 ? (Math.random() - .5) * shake : 0, sy = shake > 0 ? (Math.random() - .5) * shake : 0;
+            ctx.setTransform(DPR, 0, 0, DPR, sx * DPR, sy * DPR);
             ctx.drawImage(BACKGROUND, 0, 0, W, H);
 
             if (diff && diff.descend) {
-                const pulse = .45 + .25 * Math.sin(now / 300);
-                const lg = ctx.createLinearGradient(BORDER, 0, W - BORDER, 0);
-                lg.addColorStop(0, 'rgba(255,77,109,0)'); lg.addColorStop(.5, `rgba(255,77,109,${pulse})`); lg.addColorStop(1, 'rgba(255,77,109,0)');
-                ctx.fillStyle = lg; ctx.fillRect(BORDER, DANGER_Y - 1, W - 2 * BORDER, 2);
+                if (!draw.danger) {
+                    draw.danger = ctx.createLinearGradient(BORDER, 0, W - BORDER, 0);
+                    draw.danger.addColorStop(0, 'rgba(255,77,109,0)'); draw.danger.addColorStop(.5, 'rgba(255,77,109,1)'); draw.danger.addColorStop(1, 'rgba(255,77,109,0)');
+                }
+                ctx.globalAlpha = .45 + .25 * Math.sin(now / 300);
+                ctx.fillStyle = draw.danger; ctx.fillRect(BORDER, DANGER_Y - 1, W - 2 * BORDER, 2);
+                ctx.globalAlpha = 1;
             }
 
             for (const br of bricks) {
@@ -784,13 +826,8 @@
                 if (f > 0) { ctx.fillStyle = `rgba(255,255,255,${f * .55})`; ctx.fillRect(br.x + 1, br.y + 1, BRICK_W - 2, BRICK_H - 2); }
             }
 
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '800 12px Inter, system-ui, sans-serif';
-            for (const d of drops) {
-                ctx.save(); ctx.shadowColor = POWERS[d.kind]; ctx.shadowBlur = 16;
-                ctx.fillStyle = hexA(POWERS[d.kind], .9); rect(d.x - 15, d.y - 9, 30, 18, 9);
-                ctx.restore();
-                ctx.fillStyle = '#0a0f24'; ctx.fillText(d.kind === 'L' ? '♥' : d.kind, d.x, d.y + 1);
-            }
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            for (const d of drops) ctx.drawImage(DROP_SPRITES[d.kind], d.x - 31, d.y - 25, 62, 50);
 
             if (boss && boss.hp > 0) drawBoss(now);
             drawBombs(now);
@@ -810,12 +847,13 @@
 
             for (const p of particles) {
                 const k = Math.max(p.life / 0.5, 0), sz = (p.size || 2) * (.5 + k * .5);
-                ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot || 0);
-                ctx.fillStyle = hexA(p.color.length === 7 ? p.color : '#ffffff', Math.min(1, k * 1.3));
+                const c = Math.cos(p.rot || 0) * DPR, sn = Math.sin(p.rot || 0) * DPR;
+                ctx.setTransform(c, sn, -sn, c, (p.x + sx) * DPR, (p.y + sy) * DPR);
+                ctx.fillStyle = `rgba(${p.rgb},${Math.min(1, k * 1.3)})`;
                 ctx.fillRect(-sz / 2, -sz / 2, sz, sz * .7);
                 ctx.fillStyle = `rgba(0,0,0,${k * .35})`; ctx.fillRect(-sz / 2, sz * .2, sz, sz * .2);
-                ctx.restore();
             }
+            ctx.setTransform(DPR, 0, 0, DPR, sx * DPR, sy * DPR);
 
             if (state === 'playing' && balls.some(b => b.stuck)) {
                 ctx.fillStyle = 'rgba(230,233,245,.55)'; ctx.font = '500 14px Inter, system-ui, sans-serif';
@@ -828,9 +866,20 @@
             }
         }
 
+        let frameAvg = 16, frameCount = 0;
         function loop(t) {
-            const dt = Math.min((t - last) / 1000, 0.033);
+            const ms = t - last;
+            const dt = Math.min(ms / 1000, 0.05);
             last = t;
+            if (state === 'playing' && ms < 100) {
+                frameAvg = frameAvg * .95 + ms * .05;
+                // struggling (under ~52 fps): step the resolution down 2x → 1.5x → 1x
+                if (++frameCount > 60 && frameAvg > 19 && DPR > 1) {
+                    DPR = Math.max(1, DPR - .5);
+                    canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+                    frameCount = 0; frameAvg = 16;
+                }
+            }
             shake = Math.max(0, shake - dt * 40);
             if (state === 'playing') update(dt);
             draw();
