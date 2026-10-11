@@ -443,6 +443,7 @@
             diff = { ...difficulty(level) };
             boss = isBossLevel(level) ? makeBoss(level) : null;
             if (boss) diff.descend = 0;                    // the boss moves instead of the wall
+            if (level === MAX_LEVEL) diff.paddle *= 2;     // the final level gets a double-width paddle (27 → 54)
             bricks = buildLevel(level);
             shifted = 0;
             descendTimer = diff.descend;
@@ -754,7 +755,7 @@
                 `Toughest brick <b>${diff.maxHp} hit${diff.maxHp > 1 ? "s" : ""}</b>`,
                 diff.steel ? `Steel bricks <b>${Math.round(diff.steel * 100)}%</b>` : '',
                 diff.descend ? `Wall drops every <b>${diff.descend.toFixed(1)}s</b>` : '',
-                level === MAX_LEVEL ? `Final level: <b>bigger board</b> with more room to react` : '',
+                level === MAX_LEVEL ? `Final level: <b>bigger board</b> and a <b>double-width paddle</b>` : '',
             ].filter(Boolean);
             state = 'between';   // set before showOverlay so it hides the level-select button
             if (boss) sfx.bossWarn(); else sfx.levelUp();
@@ -765,7 +766,7 @@
                 if (level === HARD_FROM)
                     showOverlay('Level ' + level + ': Hard mode', 'Level bonus +' + bonus + '. The warm-up is over. From here on the ball is much faster, your paddle is smaller, bricks are tougher, the wall pushes down on you and power-ups are rare.', stats, 'Bring it on', false);
                 else if (level === MAX_LEVEL)
-                    showOverlay('Level 455: the final level', 'Level bonus +' + bonus + '. Beat this one and you have beaten them all. You get a bigger board for it.', stats, 'Continue', false);
+                    showOverlay('Level 455: the final level', 'Level bonus +' + bonus + '. Beat this one and you have beaten them all. You get a bigger board and a bigger paddle for it.', stats, 'Continue', false);
                 else
                     showOverlay('Level ' + level, 'Level bonus +' + bonus + '. It only gets harder from here.', stats, 'Continue', false);
             }
