@@ -18,6 +18,8 @@ The look is gritty neon: a grainy dark backdrop with soft colour glows, rough ch
 
 Your highest level is saved in the browser, so you can continue where you left off.
 
+**Jump to any level:** add `#level-` and a number to the end of the page address, for example `…/allcancel.coma/#level-455`. Play then starts on that level, and every level up to it is unlocked in the level select.
+
 **Level select:** press **Choose level** on the start or game-over screen to see all 455 levels in groups of 25, with each group's boss level marked. Any level up to your highest is unlocked and can be replayed. Beating a level earns stars, kept at your best: ★★★ for losing no lives on it, ★★ for losing one, ★ otherwise. The header shows how many levels you've unlocked and completed, and your total stars.
 
 **Controls:** move with the mouse, touch, or ← → / A D · launch with click, tap, or Space · pause with P · mute with M or the speaker button.

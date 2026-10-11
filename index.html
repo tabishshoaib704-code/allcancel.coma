@@ -1177,8 +1177,20 @@
                 'Retry level ' + level, level > 1);
         }
 
+        // Shortcut link: adding #level-455 (or any level number) to the page address unlocks
+        // every level up to that one and makes Play start there.
+        let linkLevel = 0;
+        function readLevelLink() {
+            const m = location.hash.match(/^#level-?(\d{1,3})$/i);
+            linkLevel = m ? Math.max(1, Math.min(MAX_LEVEL, +m[1])) : 0;
+            if (linkLevel && linkLevel > reached) { reached = linkLevel; save(); }
+        }
+
         function menu() {
-            if (reached > 1) {
+            if (linkLevel) {
+                $('start').textContent = 'Play level ' + linkLevel;
+                $('restart').classList.remove('hidden');
+            } else if (reached > 1) {
                 $('start').textContent = 'Continue from level ' + reached;
                 $('restart').classList.remove('hidden');
             }
@@ -1256,7 +1268,7 @@
             document.addEventListener(ev, () => sfx.unlock(), { capture: true, passive: true });
 
         $('start').addEventListener('click', () => {
-            if (state === 'menu') newGame(reached);
+            if (state === 'menu') newGame(linkLevel || reached);
             else if (state === 'over') newGame(level >= MAX_LEVEL && !bricks.some(b => !b.steel) ? 1 : level);
             $('overlay').classList.add('hidden');
             state = 'playing';
@@ -1290,8 +1302,13 @@
         });
         document.addEventListener('keyup', e => { keys[e.key.length === 1 ? e.key.toLowerCase() : e.key] = false; });
 
-        newGame(reached);
+        readLevelLink();
+        newGame(linkLevel || reached);
         menu();
+        window.addEventListener('hashchange', () => {   // the link was changed on an already-open page
+            readLevelLink();
+            if (linkLevel && state === 'menu') { newGame(linkLevel); menu(); }
+        });
         last = performance.now();
         requestAnimationFrame(loop);
     })();
