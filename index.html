@@ -21,11 +21,11 @@
             padding: 10px 16px;
         }
         .wrap {
-            /* the board is 2:3 (taller on the final level), so its width follows the height left over after the title, HUD and help */
-            --chrome: 156px;
+            /* the board is 2:3, so its width follows the height left over after the title, HUD and help */
+            --chrome: 152px;
             width: 100%; min-width: 0;
-            max-width: min(600px, (100vh - var(--chrome)) * var(--board-ratio, .6667));
-            max-width: min(600px, (100dvh - var(--chrome)) * var(--board-ratio, .6667));
+            max-width: min(600px, (100vh - var(--chrome)) * 2 / 3);
+            max-width: min(600px, (100dvh - var(--chrome)) * 2 / 3);
         }
         @media (pointer: coarse) {
             .wrap { --chrome: 112px; }
@@ -161,8 +161,7 @@
     (() => {
         const canvas = document.getElementById('game');
         const ctx = canvas.getContext('2d');
-        const W = canvas.width;                         // logical size; drawn at device resolution
-        let H = canvas.height;                          // board height can change per level (see boardHeight)
+        const W = canvas.width, H = canvas.height;      // logical size; drawn at device resolution
         let DPR = Math.min(window.devicePixelRatio || 1, 2);   // stepped down if frames run slow
         canvas.width = W * DPR; canvas.height = H * DPR;
         const $ = id => document.getElementById(id);
@@ -181,10 +180,7 @@
         const POWERS = { W: '#7cf3ff', M: '#9dff8a', S: '#ff8ad8', L: '#ff6b81', F: '#ff9a3c' };
         const FIRE_TIME = 8;   // seconds the fireball lasts
         const FIRE_GUARANTEE = 20;   // a fireball is guaranteed to drop at least once every 20 broken bricks (or 10 boss hits)
-        let PADDLE_Y = H - 30, DANGER_Y = PADDLE_Y - 45;
-        // the final level gets a taller board: the bricks stay put and the extra room goes above the paddle
-        const BASE_H = H, LAST_LEVEL_H = 840;
-        const boardHeight = L => L === MAX_LEVEL ? LAST_LEVEL_H : BASE_H;
+        const PADDLE_Y = H - 30, DANGER_Y = PADDLE_Y - 45;
 
         /* ---------- difficulty curve: everything gets worse every level ---------- */
         const HARD_FROM = 11;   // hard mode: a big difficulty jump after the first 10 levels
@@ -438,7 +434,6 @@
         }
 
         function loadLevel() {
-            setBoardHeight(boardHeight(level));
             livesAtStart = lives;
             diff = { ...difficulty(level) };
             boss = isBossLevel(level) ? makeBoss(level) : null;
@@ -755,7 +750,7 @@
                 `Toughest brick <b>${diff.maxHp} hit${diff.maxHp > 1 ? "s" : ""}</b>`,
                 diff.steel ? `Steel bricks <b>${Math.round(diff.steel * 100)}%</b>` : '',
                 diff.descend ? `Wall drops every <b>${diff.descend.toFixed(1)}s</b>` : '',
-                level === MAX_LEVEL ? `Final level: <b>bigger board</b> and a <b>double-width paddle</b>` : '',
+                level === MAX_LEVEL ? `Final level: <b>double-width paddle</b>` : '',
             ].filter(Boolean);
             state = 'between';   // set before showOverlay so it hides the level-select button
             if (boss) sfx.bossWarn(); else sfx.levelUp();
@@ -766,7 +761,7 @@
                 if (level === HARD_FROM)
                     showOverlay('Level ' + level + ': Hard mode', 'Level bonus +' + bonus + '. The warm-up is over. From here on the ball is much faster, your paddle is smaller, bricks are tougher, the wall pushes down on you and power-ups are rare.', stats, 'Bring it on', false);
                 else if (level === MAX_LEVEL)
-                    showOverlay('Level 455: the final level', 'Level bonus +' + bonus + '. Beat this one and you have beaten them all. You get a bigger board and a bigger paddle for it.', stats, 'Continue', false);
+                    showOverlay('Level 455: the final level', 'Level bonus +' + bonus + '. Beat this one and you have beaten them all. You get a bigger paddle for it.', stats, 'Continue', false);
                 else
                     showOverlay('Level ' + level, 'Level bonus +' + bonus + '. It only gets harder from here.', stats, 'Continue', false);
             }
@@ -864,7 +859,7 @@
         }));
 
         // deep space backdrop: colour blobs, faint grid, vignette, neon walls
-        const makeBackground = () => sprite(W, H, (g, w, h) => {
+        const BACKGROUND = sprite(W, H, (g, w, h) => {
             g.fillStyle = '#0a0f24'; g.fillRect(0, 0, w, h);
             for (const [x, y, r, c] of [[80, 90, 260, 'rgba(124,92,255,.22)'], [420, 260, 240, 'rgba(0,200,255,.14)'], [200, 560, 280, 'rgba(255,80,170,.10)']]) {
                 const rg = g.createRadialGradient(x, y, 0, x, y, r);
@@ -899,25 +894,9 @@
         });
         // The backdrop never changes, so it sits on its own layer behind the game canvas instead of
         // being redrawn every frame (that full-board redraw was the biggest per-frame cost).
-        function placeBackground() {
-            const bg = makeBackground();
-            bg.setAttribute('aria-hidden', 'true');
-            Object.assign(bg.style, { position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', borderRadius: '0 0 16px 16px' });
-            if (BACKGROUND) BACKGROUND.replaceWith(bg); else canvas.before(bg);
-            BACKGROUND = bg;
-        }
-        let BACKGROUND = null;
-        placeBackground();
-
-        function setBoardHeight(h) {
-            if (h === H) return;
-            H = h; PADDLE_Y = H - 30; DANGER_Y = PADDLE_Y - 45;
-            canvas.height = Math.round(H * DPR);
-            canvas.style.aspectRatio = `${W} / ${H}`;
-            document.querySelector('.wrap').style.setProperty('--board-ratio', W / H);
-            placeBackground();
-            if (paddle) paddle.y = PADDLE_Y;
-        }
+        BACKGROUND.setAttribute('aria-hidden', 'true');
+        Object.assign(BACKGROUND.style, { position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', borderRadius: '0 0 16px 16px' });
+        canvas.before(BACKGROUND);
 
         function cracks(br) {
             const dmg = 1 - br.hp / br.maxHp;
