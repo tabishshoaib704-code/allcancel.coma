@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ludo</title>
+    <title>Brick Breaker</title>
     <style>
         :root {
             --bg: #0f172a;
@@ -19,399 +19,351 @@
             color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
             padding: 16px;
         }
-        .wrap { width: 100%; max-width: min(600px, 100vh - 190px); min-width: 0; }
-        h1 { text-align: center; font-size: 2rem; letter-spacing: .08em; margin-bottom: .6rem; }
-        h1 span:nth-child(1) { color: #e53935; } h1 span:nth-child(2) { color: #43a047; }
-        h1 span:nth-child(3) { color: #fdd835; } h1 span:nth-child(4) { color: #1e88e5; }
+        .wrap { width: 100%; max-width: min(560px, (100vh - 170px) * 0.8); min-width: 0; }
+        h1 { text-align: center; font-size: 2rem; letter-spacing: .05em; margin-bottom: .75rem; }
+        h1 span { color: var(--accent); }
+        .hud {
+            display: flex; justify-content: space-between; background: var(--panel);
+            padding: .6rem 1rem; border-radius: 12px 12px 0 0; font-weight: 700;
+        }
+        .hud b { color: var(--accent); }
         .stage { position: relative; }
-        canvas { display: block; width: 100%; aspect-ratio: 1; border-radius: 12px; background: #fff; touch-action: manipulation; }
-        .bar {
-            display: flex; align-items: center; gap: 1rem; margin-top: .75rem;
-            background: var(--panel); border-radius: 12px; padding: .6rem .9rem;
+        canvas {
+            display: block; width: 100%; aspect-ratio: 4 / 5; background: #020617;
+            border-radius: 0 0 12px 12px; touch-action: none; cursor: none;
         }
-        .turn-dot { width: 18px; height: 18px; border-radius: 50%; flex: none; border: 2px solid #fff; }
-        #status { flex: 1; min-width: 0; font-weight: 600; line-height: 1.3; }
-        #status small { display: block; color: var(--muted); font-weight: 400; }
-        .dice {
-            width: 56px; height: 56px; flex: none; border-radius: 12px; border: none; background: #fff;
-            display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); padding: 8px; cursor: pointer;
-            box-shadow: 0 3px 0 #94a3b8;
-        }
-        .dice:disabled { cursor: default; opacity: .55; }
-        .dice.ready { animation: pulse 1s infinite; }
-        @keyframes pulse { 50% { box-shadow: 0 3px 0 #94a3b8, 0 0 0 6px rgba(245,158,11,.5); } }
-        .pip { width: 9px; height: 9px; border-radius: 50%; place-self: center; background: transparent; }
-        .pip.on { background: #0f172a; }
         .overlay {
             position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
             justify-content: center; gap: 1rem; text-align: center; padding: 1.5rem;
-            background: rgba(2, 6, 23, .88); border-radius: 12px;
+            background: rgba(2, 6, 23, .85); border-radius: 0 0 12px 12px;
         }
         .overlay.hidden { display: none; }
         .overlay h2 { font-size: 1.8rem; }
-        .overlay p { color: var(--muted); line-height: 1.5; max-width: 26rem; }
-        .seats { display: grid; grid-template-columns: auto auto; gap: .5rem 1rem; align-items: center; }
-        .seats label { display: flex; align-items: center; gap: .5rem; font-weight: 700; justify-self: end; }
-        .seats select { font: inherit; padding: .3rem .5rem; border-radius: 6px; border: none; background: #e2e8f0; color: #0f172a; }
-        button.primary {
+        .overlay p { color: var(--muted); line-height: 1.6; }
+        button {
             font: inherit; font-weight: 700; font-size: 1.1rem; border: none; border-radius: 8px;
             padding: .8rem 2rem; background: var(--accent); color: #111; cursor: pointer;
         }
-        button.primary:hover { filter: brightness(1.1); }
-        .err { color: #fca5a5; min-height: 1.2em; font-size: .9rem; }
-        .links { text-align: center; margin-top: .6rem; font-size: .9rem; color: var(--muted); }
-        .links a { color: var(--accent); }
+        button:hover { filter: brightness(1.1); }
+        .help { text-align: center; color: var(--muted); font-size: .9rem; margin-top: .75rem; }
     </style>
 </head>
 <body>
     <div class="wrap">
-        <h1><span>L</span><span>U</span><span>D</span><span>O</span></h1>
+        <h1>BRICK <span>BREAKER</span></h1>
+        <div class="hud">
+            <span>Score <b id="score">0</b></span>
+            <span>Level <b id="level">1</b></span>
+            <span>Lives <b id="lives">3</b></span>
+            <span>Best <b id="best">0</b></span>
+        </div>
         <div class="stage">
-            <canvas id="board" width="600" height="600"></canvas>
+            <canvas id="game" width="480" height="600"></canvas>
             <div class="overlay" id="overlay">
-                <h2 id="ov-title">New Game</h2>
-                <p id="ov-text">Roll a 6 to bring a token out. Race all four tokens around the board and into your home. Landing on an opponent sends them back to base — except on starred and start squares.</p>
-                <div class="seats" id="seats"></div>
-                <div class="err" id="err"></div>
-                <button class="primary" id="start">Start Game</button>
+                <h2 id="ov-title">Ready?</h2>
+                <p id="ov-text">Smash every brick to clear the level.<br>Catch falling power-ups: <b style="color:#22d3ee">W</b>ide paddle, <b style="color:#a3e635">M</b>ulti-ball, <b style="color:#f472b6">S</b>low ball.</p>
+                <button id="start">Play</button>
             </div>
         </div>
-        <div class="bar">
-            <div class="turn-dot" id="turn-dot"></div>
-            <div id="status">Set up a game to begin</div>
-            <button class="dice" id="dice" disabled aria-label="Roll dice"></button>
-        </div>
-        <p class="links">Rolling a 6, capturing, or getting a token home earns another roll. Three 6s in a row loses the turn. &nbsp;·&nbsp; <a href="brick-breaker.html">Play Brick Breaker</a></p>
+        <p class="help">Move: mouse, touch, or ← → / A D &nbsp;·&nbsp; Launch: click, tap, or Space &nbsp;·&nbsp; Pause: P</p>
     </div>
 
     <script>
     (() => {
-        const canvas = document.getElementById('board');
+        const canvas = document.getElementById('game');
         const ctx = canvas.getContext('2d');
-        const S = canvas.width, C = S / 15;
+        const W = canvas.width, H = canvas.height;
         const $ = id => document.getElementById(id);
-        const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-        // 52-square main track as [row, col], starting at Red's start square and running clockwise.
-        const TRACK = [
-            [6,1],[6,2],[6,3],[6,4],[6,5],
-            [5,6],[4,6],[3,6],[2,6],[1,6],[0,6],
-            [0,7],[0,8],
-            [1,8],[2,8],[3,8],[4,8],[5,8],
-            [6,9],[6,10],[6,11],[6,12],[6,13],[6,14],
-            [7,14],[8,14],
-            [8,13],[8,12],[8,11],[8,10],[8,9],
-            [9,8],[10,8],[11,8],[12,8],[13,8],[14,8],
-            [14,7],[14,6],
-            [13,6],[12,6],[11,6],[10,6],[9,6],
-            [8,5],[8,4],[8,3],[8,2],[8,1],[8,0],
-            [7,0],[6,0],
-        ];
-        const SAFE = new Set([0, 8, 13, 21, 26, 34, 39, 47]);
-        const LAST_TRACK = 50, FINISHED = 56;
+        const COLS = 8, BRICK_H = 20, BRICK_GAP = 6, TOP = 60;
+        const BRICK_W = (W - BRICK_GAP * (COLS + 1)) / COLS;
+        const ROW_COLORS = ['#ef4444', '#f97316', '#f59e0b', '#22c55e', '#06b6d4', '#6366f1', '#a855f7'];
+        const POWERS = { W: '#22d3ee', M: '#a3e635', S: '#f472b6' };
+        const BASE_PADDLE = 90;
 
-        const PLAYERS = [
-            { name: 'Red',    color: '#e53935', light: '#ffcdd2', start: 0,  base: [0, 0], home: i => [7, 1 + i] },
-            { name: 'Green',  color: '#43a047', light: '#c8e6c9', start: 13, base: [0, 9], home: i => [1 + i, 7] },
-            { name: 'Yellow', color: '#fdd835', light: '#fff9c4', start: 26, base: [9, 9], home: i => [7, 13 - i] },
-            { name: 'Blue',   color: '#1e88e5', light: '#bbdefb', start: 39, base: [9, 0], home: i => [13 - i, 7] },
-        ];
-        const DEFAULT_SEATS = ['human', 'cpu', 'cpu', 'cpu'];
+        let best = 0;
+        try { best = +localStorage.getItem('brickBreakerBest') || 0; } catch (e) {}
+        $('best').textContent = best;
 
-        let seats = DEFAULT_SEATS.slice();
-        let tokens = [];          // { player, id, p } where p: -1 base, 0..50 track progress, 51..55 home column, 56 finished
-        let cur = 0, dice = 1, sixes = 0, phase = 'setup', movable = [];
+        const keys = {};
+        let paddle, balls, bricks, drops, particles;
+        let score, lives, level, state = 'menu', last, wideTimer = 0, slowTimer = 0;
 
-        /* ---------- setup screen ---------- */
-        PLAYERS.forEach((pl, i) => {
-            const label = document.createElement('label');
-            label.innerHTML = `<span class="turn-dot" style="background:${pl.color}"></span>${pl.name}`;
-            const sel = document.createElement('select');
-            sel.innerHTML = '<option value="human">Human</option><option value="cpu">Computer</option><option value="off">Off</option>';
-            sel.value = seats[i];
-            sel.addEventListener('change', () => { seats[i] = sel.value; });
-            $('seats').append(label, sel);
-        });
-
-        $('start').addEventListener('click', () => {
-            if (seats.filter(s => s !== 'off').length < 2) { $('err').textContent = 'Pick at least two players.'; return; }
-            $('err').textContent = '';
-            tokens = [];
-            PLAYERS.forEach((_, pi) => { if (seats[pi] !== 'off') for (let id = 0; id < 4; id++) tokens.push({ player: pi, id, p: -1 }); });
-            cur = seats.findIndex(s => s !== 'off');
-            sixes = 0;
-            $('overlay').classList.add('hidden');
-            startTurn();
-        });
-
-        /* ---------- geometry ---------- */
-        const trackIndex = (pl, p) => (PLAYERS[pl].start + p) % 52;
-
-        function cellOf(t) {
-            const pl = PLAYERS[t.player];
-            if (t.p === -1) {
-                const [br, bc] = pl.base;
-                const spots = [[2, 2], [2, 4], [4, 2], [4, 4]];
-                return { x: bc + spots[t.id][1], y: br + spots[t.id][0], key: 'b' + t.player + t.id };
-            }
-            if (t.p === FINISHED) {
-                const off = [[7.5, 6.9], [6.9, 7.5], [7.5, 8.1], [8.1, 7.5]][t.player]; // inside own triangle
-                return { x: off[1], y: off[0], key: 'f' + t.player };
-            }
-            const [r, c] = t.p <= LAST_TRACK ? TRACK[trackIndex(t.player, t.p)] : pl.home(t.p - LAST_TRACK - 1);
-            return { x: c + 0.5, y: r + 0.5, key: r + ',' + c };
+        function hud() {
+            $('score').textContent = score;
+            $('lives').textContent = lives;
+            $('level').textContent = level;
         }
 
-        // Pixel position for every token, fanning out tokens that share a square.
-        function layout() {
-            const groups = {};
-            for (const t of tokens) { const c = cellOf(t); (groups[c.key] ||= { c, list: [] }).list.push(t); }
-            const out = new Map();
-            for (const { c, list } of Object.values(groups)) {
-                const n = list.length, r = n > 1 ? C * 0.26 : C * 0.36;
-                list.forEach((t, i) => {
-                    const a = (i / n) * Math.PI * 2 - Math.PI / 4, d = n > 1 ? C * 0.18 : 0;
-                    out.set(t, { x: c.x * C + Math.cos(a) * d, y: c.y * C + Math.sin(a) * d, r });
-                });
-            }
-            return out;
-        }
-
-        /* ---------- drawing ---------- */
-        function cell(r, c, fill) {
-            ctx.fillStyle = fill; ctx.fillRect(c * C, r * C, C, C);
-            ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 1; ctx.strokeRect(c * C + .5, r * C + .5, C - 1, C - 1);
-        }
-
-        function star(cx, cy, R, fill) {
-            ctx.beginPath();
-            for (let i = 0; i < 10; i++) {
-                const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? R * 0.45 : R;
-                ctx.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
-            }
-            ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
-        }
-
-        function drawBoard() {
-            ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, S, S);
-
-            PLAYERS.forEach((pl, pi) => {
-                const [br, bc] = pl.base;
-                ctx.fillStyle = seats[pi] === 'off' ? '#cbd5e1' : pl.color;
-                ctx.fillRect(bc * C, br * C, 6 * C, 6 * C);
-                ctx.fillStyle = '#fff';
-                ctx.beginPath(); ctx.roundRect(bc * C + C * 0.8, br * C + C * 0.8, C * 4.4, C * 4.4, C * 0.4); ctx.fill();
-                for (const [dy, dx] of [[2, 2], [2, 4], [4, 2], [4, 4]]) {
-                    ctx.fillStyle = pl.light;
-                    ctx.beginPath(); ctx.arc((bc + dx) * C, (br + dy) * C, C * 0.55, 0, Math.PI * 2); ctx.fill();
+        function buildLevel() {
+            bricks = [];
+            const rows = Math.min(4 + level, 7);
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    // later levels get gaps in patterns and tougher bricks
+                    if (level >= 2 && (r + c + level) % 7 === 0) continue;
+                    const hp = level >= 3 && r < level - 2 ? 2 : 1;
+                    bricks.push({
+                        x: BRICK_GAP + c * (BRICK_W + BRICK_GAP),
+                        y: TOP + r * (BRICK_H + BRICK_GAP),
+                        hp, color: ROW_COLORS[r % ROW_COLORS.length],
+                    });
                 }
-            });
-
-            TRACK.forEach(([r, c], i) => {
-                const owner = PLAYERS.find(pl => pl.start === i);
-                cell(r, c, owner ? owner.color : '#fff');
-                if (SAFE.has(i) && !owner) star((c + .5) * C, (r + .5) * C, C * 0.32, '#cbd5e1');
-            });
-            PLAYERS.forEach(pl => { for (let i = 0; i < 5; i++) { const [r, c] = pl.home(i); cell(r, c, pl.color); } });
-
-            // center: four triangles pointing to the middle
-            const m = 7.5 * C, a = 6 * C, b = 9 * C;
-            const tris = [[[a, a], [a, b]], [[a, a], [b, a]], [[b, a], [b, b]], [[a, b], [b, b]]];
-            tris.forEach(([[x1, y1], [x2, y2]], pi) => {
-                ctx.fillStyle = PLAYERS[pi].color;
-                ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(m, m); ctx.closePath(); ctx.fill();
-            });
-            ctx.strokeStyle = '#334155'; ctx.lineWidth = 2; ctx.strokeRect(1, 1, S - 2, S - 2);
+            }
         }
 
-        function drawTokens() {
-            const pos = layout();
-            const pulse = (Math.sin(performance.now() / 160) + 1) / 2;
-            // current player's tokens drawn last so they sit on top
-            const order = tokens.slice().sort((a, b) => (a.player === cur) - (b.player === cur));
-            for (const t of order) {
-                const { x, y, r } = pos.get(t), pl = PLAYERS[t.player];
-                if (phase === 'pick' && movable.includes(t)) {
-                    ctx.beginPath(); ctx.arc(x, y, r + 3 + pulse * 4, 0, Math.PI * 2);
-                    ctx.fillStyle = 'rgba(15,23,42,.35)'; ctx.fill();
+        function ballSpeed() { return (300 + level * 25) * (slowTimer > 0 ? 0.65 : 1); }
+
+        function resetBall() {
+            balls = [{ x: paddle.x, y: paddle.y - 10, vx: 0, vy: 0, r: 7, stuck: true }];
+            drops = [];
+            wideTimer = slowTimer = 0;
+            paddle.w = BASE_PADDLE;
+        }
+
+        function newGame() {
+            score = 0; lives = 3; level = 1;
+            paddle = { x: W / 2, y: H - 30, w: BASE_PADDLE, h: 12 };
+            particles = [];
+            buildLevel();
+            resetBall();
+            hud();
+        }
+
+        function launch() {
+            for (const b of balls) {
+                if (!b.stuck) continue;
+                const a = -Math.PI / 2 + (Math.random() - 0.5) * 0.6;
+                const s = ballSpeed();
+                b.vx = Math.cos(a) * s; b.vy = Math.sin(a) * s; b.stuck = false;
+            }
+        }
+
+        function burst(x, y, color, n = 10) {
+            for (let i = 0; i < n; i++) {
+                const a = Math.random() * Math.PI * 2, s = 40 + Math.random() * 160;
+                particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.5, color });
+            }
+        }
+
+        function hitBrick(br) {
+            br.hp--;
+            if (br.hp > 0) { burst(br.x + BRICK_W / 2, br.y + BRICK_H / 2, '#fff', 4); return; }
+            bricks.splice(bricks.indexOf(br), 1);
+            score += 10 * level;
+            burst(br.x + BRICK_W / 2, br.y + BRICK_H / 2, br.color);
+            if (Math.random() < 0.14) {
+                const kinds = Object.keys(POWERS);
+                drops.push({ x: br.x + BRICK_W / 2, y: br.y, kind: kinds[Math.floor(Math.random() * kinds.length)] });
+            }
+            hud();
+        }
+
+        function applyPower(kind) {
+            score += 25;
+            if (kind === 'W') { wideTimer = 12; paddle.w = BASE_PADDLE * 1.6; }
+            if (kind === 'S') { slowTimer = 10; rescaleBalls(); }
+            if (kind === 'M') {
+                const extra = [];
+                for (const b of balls.slice(0, 3)) {
+                    for (const da of [-0.4, 0.4]) {
+                        const a = Math.atan2(b.vy || -1, b.vx) + da, s = ballSpeed();
+                        extra.push({ x: b.x, y: b.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: b.r, stuck: b.stuck });
+                    }
                 }
-                ctx.beginPath(); ctx.arc(x, y + 2, r, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fill();
-                ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = pl.color; ctx.fill();
-                ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke();
-                ctx.beginPath(); ctx.arc(x, y, r * 0.45, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.fill();
+                balls.push(...extra);
+            }
+            hud();
+        }
+
+        function rescaleBalls() {
+            const s = ballSpeed();
+            for (const b of balls) {
+                if (b.stuck) continue;
+                const m = Math.hypot(b.vx, b.vy) || 1;
+                b.vx = b.vx / m * s; b.vy = b.vy / m * s;
             }
         }
 
-        function render() { drawBoard(); drawTokens(); requestAnimationFrame(render); }
+        function update(dt) {
+            // paddle (keyboard)
+            const dir = (keys.ArrowRight || keys.d ? 1 : 0) - (keys.ArrowLeft || keys.a ? 1 : 0);
+            paddle.x += dir * 520 * dt;
+            paddle.x = Math.max(paddle.w / 2, Math.min(W - paddle.w / 2, paddle.x));
 
-        function drawDice(v) {
-            const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
-            $('dice').innerHTML = Array.from({ length: 9 }, (_, i) => `<span class="pip${PIPS[v].includes(i) ? ' on' : ''}"></span>`).join('');
-        }
+            if (wideTimer > 0 && (wideTimer -= dt) <= 0) paddle.w = BASE_PADDLE;
+            if (slowTimer > 0 && (slowTimer -= dt) <= 0) rescaleBalls();
 
-        function setStatus(main, sub = '') {
-            $('status').innerHTML = main + (sub ? `<small>${sub}</small>` : '');
-            $('turn-dot').style.background = PLAYERS[cur].color;
-        }
+            for (let i = balls.length - 1; i >= 0; i--) {
+                const b = balls[i];
+                if (b.stuck) { b.x = paddle.x; b.y = paddle.y - b.r - 1; continue; }
 
-        /* ---------- rules ---------- */
-        function canMove(t, d) {
-            if (t.p === FINISHED) return false;
-            if (t.p === -1) return d === 6;
-            return t.p + d <= FINISHED;
-        }
+                // sub-step so fast balls don't tunnel through bricks
+                const steps = Math.ceil(Math.hypot(b.vx, b.vy) * dt / 4);
+                for (let s = 0; s < steps; s++) {
+                    b.x += b.vx * dt / steps;
+                    b.y += b.vy * dt / steps;
 
-        const isSafe = (pl, p) => p > LAST_TRACK || SAFE.has(trackIndex(pl, p));
+                    if (b.x < b.r) { b.x = b.r; b.vx = Math.abs(b.vx); }
+                    if (b.x > W - b.r) { b.x = W - b.r; b.vx = -Math.abs(b.vx); }
+                    if (b.y < b.r) { b.y = b.r; b.vy = Math.abs(b.vy); }
 
-        function victimsAt(pl, p) {
-            if (p > LAST_TRACK || isSafe(pl, p)) return [];
-            const idx = trackIndex(pl, p);
-            return tokens.filter(o => o.player !== pl && o.p >= 0 && o.p <= LAST_TRACK && trackIndex(o.player, o.p) === idx);
-        }
+                    // paddle: bounce angle depends on where the ball lands
+                    if (b.vy > 0 && b.y + b.r >= paddle.y && b.y - b.r <= paddle.y + paddle.h &&
+                        Math.abs(b.x - paddle.x) <= paddle.w / 2 + b.r) {
+                        const rel = (b.x - paddle.x) / (paddle.w / 2);
+                        const a = -Math.PI / 2 + Math.max(-1, Math.min(1, rel)) * 1.05;
+                        const sp = ballSpeed();
+                        b.vx = Math.cos(a) * sp; b.vy = Math.sin(a) * sp;
+                        b.y = paddle.y - b.r;
+                    }
 
-        // How many opponent tokens could land on this track square next turn.
-        function threatAt(pl, p) {
-            if (p > LAST_TRACK || isSafe(pl, p)) return 0;
-            const idx = trackIndex(pl, p);
-            let n = 0;
-            for (const o of tokens) {
-                if (o.player === pl || o.p < 0 || o.p > LAST_TRACK) continue;
-                const dist = (idx - trackIndex(o.player, o.p) + 52) % 52;
-                if (dist >= 1 && dist <= 6 && o.p + dist <= LAST_TRACK) n++;
-            }
-            return n;
-        }
+                    for (const br of bricks) {
+                        const cx = Math.max(br.x, Math.min(b.x, br.x + BRICK_W));
+                        const cy = Math.max(br.y, Math.min(b.y, br.y + BRICK_H));
+                        const dx = b.x - cx, dy = b.y - cy;
+                        if (dx * dx + dy * dy <= b.r * b.r) {
+                            if (Math.abs(dx) > Math.abs(dy)) { b.vx = Math.sign(dx || -b.vx) * Math.abs(b.vx); b.x = cx + Math.sign(dx || 1) * b.r; }
+                            else { b.vy = Math.sign(dy || -b.vy) * Math.abs(b.vy); b.y = cy + Math.sign(dy || 1) * b.r; }
+                            hitBrick(br);
+                            break;
+                        }
+                    }
+                }
 
-        function cpuChoose(list, d) {
-            let bestT = list[0], bestScore = -Infinity;
-            for (const t of list) {
-                const np = t.p === -1 ? 0 : t.p + d;
-                let s = np * 0.4;
-                if (np === FINISHED) s += 90;
-                s += victimsAt(t.player, np).length * 80;
-                if (t.p === -1) s += 55;
-                if (t.p <= LAST_TRACK && np > LAST_TRACK) s += 40;
-                if (isSafe(t.player, np)) s += 15;
-                if (t.p >= 0) s += threatAt(t.player, t.p) * 25;
-                s -= threatAt(t.player, np) * 35;
-                s += Math.random() * 3;
-                if (s > bestScore) { bestScore = s; bestT = t; }
-            }
-            return bestT;
-        }
-
-        /* ---------- turn flow ---------- */
-        const isCpu = () => seats[cur] === 'cpu';
-        const name = () => PLAYERS[cur].name + (isCpu() ? ' (computer)' : '');
-
-        function startTurn() {
-            phase = 'roll';
-            movable = [];
-            if (isCpu()) {
-                $('dice').disabled = true; $('dice').classList.remove('ready');
-                setStatus(name() + ' is rolling…');
-                setTimeout(roll, 700);
-            } else {
-                $('dice').disabled = false; $('dice').classList.add('ready');
-                setStatus(name() + ' — your roll', 'Tap the dice or press Space');
-            }
-        }
-
-        async function roll() {
-            if (phase !== 'roll') return;
-            phase = 'rolling';
-            $('dice').disabled = true; $('dice').classList.remove('ready');
-            for (let i = 0; i < 8; i++) { drawDice(1 + Math.floor(Math.random() * 6)); await sleep(55); }
-            dice = 1 + Math.floor(Math.random() * 6);
-            drawDice(dice);
-
-            sixes = dice === 6 ? sixes + 1 : 0;
-            if (sixes === 3) {
-                setStatus(name() + ' rolled three 6s', 'Turn lost!');
-                await sleep(1300);
-                return nextPlayer();
+                if (b.y - b.r > H) balls.splice(i, 1);
             }
 
-            movable = tokens.filter(t => t.player === cur && canMove(t, dice));
-            if (movable.length === 0) {
-                setStatus(name() + ' rolled ' + dice, 'No moves possible');
-                await sleep(1100);
-                return nextPlayer();
+            if (balls.length === 0) {
+                lives--; hud();
+                if (lives <= 0) return endGame(false);
+                resetBall();
             }
 
-            // Skip the pick step when every option is the same move (e.g. all tokens still in base).
-            const allSame = movable.every(t => t.p === movable[0].p);
-            if (isCpu() || allSame) {
-                setStatus(name() + ' rolled ' + dice);
-                await sleep(isCpu() ? 500 : 300);
-                return move(isCpu() ? cpuChoose(movable, dice) : movable[0]);
+            for (let i = drops.length - 1; i >= 0; i--) {
+                const d = drops[i];
+                d.y += 150 * dt;
+                if (d.y + 10 >= paddle.y && d.y - 10 <= paddle.y + paddle.h && Math.abs(d.x - paddle.x) <= paddle.w / 2 + 10) {
+                    applyPower(d.kind); burst(d.x, d.y, POWERS[d.kind], 14); drops.splice(i, 1);
+                } else if (d.y > H + 20) drops.splice(i, 1);
             }
-            phase = 'pick';
-            setStatus(name() + ' rolled ' + dice, 'Tap a highlighted token to move it');
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 400 * dt; p.life -= dt;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+
+            if (bricks.length === 0) {
+                level++;
+                score += 100 * lives;
+                buildLevel(); resetBall(); hud();
+                showOverlay('Level ' + level, 'Bonus +' + (100 * lives) + '. Bricks get tougher and the ball gets faster.', 'Continue');
+                state = 'between';
+            }
         }
 
-        async function move(t) {
-            phase = 'moving';
-            movable = [];
-            if (t.p === -1) { t.p = 0; await sleep(180); }
-            else for (let i = 0; i < dice; i++) { t.p++; await sleep(150); }
-
-            const victims = victimsAt(t.player, t.p);
-            for (const v of victims) v.p = -1;
-            const finished = t.p === FINISHED;
-
-            if (tokens.filter(o => o.player === cur).every(o => o.p === FINISHED)) return win();
-
-            let note = '';
-            if (victims.length) note = 'Captured ' + PLAYERS[victims[0].player].name + '! Roll again';
-            else if (finished) note = 'Token home! Roll again';
-            else if (dice === 6) note = 'Rolled a 6 — roll again';
-
-            if (note) {
-                setStatus(name(), note);
-                await sleep(isCpu() ? 900 : 500);
-                startTurn();
-                if (!isCpu()) setStatus(name() + ' — roll again', note);
-            } else nextPlayer();
+        function rect(x, y, w, h, r) {
+            ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); ctx.fill();
         }
 
-        function nextPlayer() {
-            sixes = 0;
-            do { cur = (cur + 1) % 4; } while (seats[cur] === 'off');
-            startTurn();
+        function draw() {
+            ctx.clearRect(0, 0, W, H);
+
+            for (const br of bricks) {
+                ctx.fillStyle = br.color;
+                rect(br.x, br.y, BRICK_W, BRICK_H, 4);
+                if (br.hp > 1) {
+                    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+                    ctx.strokeRect(br.x + 3, br.y + 3, BRICK_W - 6, BRICK_H - 6);
+                }
+            }
+
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = 'bold 13px system-ui, sans-serif';
+            for (const d of drops) {
+                ctx.fillStyle = POWERS[d.kind];
+                ctx.beginPath(); ctx.arc(d.x, d.y, 11, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#020617'; ctx.fillText(d.kind, d.x, d.y + 1);
+            }
+
+            ctx.fillStyle = wideTimer > 0 ? POWERS.W : '#f59e0b';
+            rect(paddle.x - paddle.w / 2, paddle.y, paddle.w, paddle.h, 6);
+
+            ctx.fillStyle = slowTimer > 0 ? POWERS.S : '#f8fafc';
+            for (const b of balls) { ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill(); }
+
+            for (const p of particles) {
+                ctx.globalAlpha = Math.max(p.life / 0.5, 0);
+                ctx.fillStyle = p.color; ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+            }
+            ctx.globalAlpha = 1;
+
+            if (state === 'playing' && balls.some(b => b.stuck)) {
+                ctx.fillStyle = '#94a3b8'; ctx.font = '15px system-ui, sans-serif';
+                ctx.fillText('Click, tap, or press Space to launch', W / 2, H / 2 + 60);
+            }
+            if (state === 'paused') {
+                ctx.fillStyle = 'rgba(2,6,23,.6)'; ctx.fillRect(0, 0, W, H);
+                ctx.fillStyle = '#f8fafc'; ctx.font = 'bold 32px system-ui, sans-serif';
+                ctx.fillText('PAUSED', W / 2, H / 2);
+            }
         }
 
-        function win() {
-            phase = 'over';
-            setStatus(PLAYERS[cur].name + ' wins!');
-            $('ov-title').textContent = '🏆 ' + PLAYERS[cur].name + ' wins!';
-            $('ov-title').style.color = PLAYERS[cur].color;
-            $('ov-text').textContent = 'All four tokens made it home. Play again?';
-            $('start').textContent = 'Play Again';
+        function loop(t) {
+            const dt = Math.min((t - last) / 1000, 0.033);
+            last = t;
+            if (state === 'playing') update(dt);
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        function showOverlay(title, text, btn) {
+            $('ov-title').textContent = title;
+            $('ov-text').textContent = text;
+            $('start').textContent = btn;
             $('overlay').classList.remove('hidden');
         }
 
-        /* ---------- input ---------- */
-        $('dice').addEventListener('click', () => { if (!isCpu()) roll(); });
-        document.addEventListener('keydown', e => {
-            if (e.key === ' ' && phase === 'roll' && !isCpu()) { e.preventDefault(); roll(); }
-        });
-        canvas.addEventListener('click', e => {
-            if (phase !== 'pick') return;
-            const rect = canvas.getBoundingClientRect();
-            const x = (e.clientX - rect.left) * S / rect.width, y = (e.clientY - rect.top) * S / rect.height;
-            const pos = layout();
-            let pick = null, bestD = Infinity;
-            for (const t of movable) {
-                const p = pos.get(t), d = Math.hypot(p.x - x, p.y - y);
-                if (d <= Math.max(p.r, C * 0.5) && d < bestD) { bestD = d; pick = t; }
+        function endGame() {
+            state = 'over';
+            const isBest = score > best;
+            if (isBest) {
+                best = score; $('best').textContent = best;
+                try { localStorage.setItem('brickBreakerBest', best); } catch (e) {}
             }
-            if (pick) move(pick);
+            showOverlay(isBest ? 'New High Score!' : 'Game Over', 'You reached level ' + level + ' with ' + score + ' points.', 'Play Again');
+        }
+
+        $('start').addEventListener('click', () => {
+            if (state === 'menu' || state === 'over') newGame();
+            $('overlay').classList.add('hidden');
+            state = 'playing';
         });
 
-        drawDice(6);
-        $('turn-dot').style.background = PLAYERS[0].color;
-        render();
+        function pointerX(e) {
+            const r = canvas.getBoundingClientRect();
+            return (e.clientX - r.left) * W / r.width;
+        }
+        canvas.addEventListener('pointermove', e => { if (paddle) paddle.x = pointerX(e); });
+        canvas.addEventListener('pointerdown', e => {
+            if (state !== 'playing') return;
+            paddle.x = pointerX(e);
+            launch();
+        });
+
+        document.addEventListener('keydown', e => {
+            keys[e.key.length === 1 ? e.key.toLowerCase() : e.key] = true;
+            if (e.key === ' ' || e.key.startsWith('Arrow')) e.preventDefault();
+            if (e.key === ' ' && state === 'playing') launch();
+            if ((e.key === 'p' || e.key === 'P') && (state === 'playing' || state === 'paused')) {
+                state = state === 'playing' ? 'paused' : 'playing';
+            }
+        });
+        document.addEventListener('keyup', e => { keys[e.key.length === 1 ? e.key.toLowerCase() : e.key] = false; });
+
+        newGame();
+        last = performance.now();
+        requestAnimationFrame(loop);
     })();
     </script>
 </body>
