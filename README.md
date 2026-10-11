@@ -4,7 +4,7 @@ A browser brick-breaker game with **455 levels**. Open `index.html` in any brows
 
 Every level is harder than the one before it:
 
-- the ball gets faster (300 → 820 px/s) and the paddle gets smaller (90 → 34 px)
+- the ball gets faster (330 → 902 px/s) and the paddle gets smaller (90 → 34 px)
 - bricks take more hits to break (up to 7); their colour shifts from coral to violet the tougher they are, and they crack as you damage them
 - dark riveted iron bricks appear from level 6 and can't be broken
 - from level 12 the whole wall creeps down toward you, faster each level, and costs a life if it reaches the glowing red line
