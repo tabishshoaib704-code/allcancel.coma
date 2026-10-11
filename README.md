@@ -2,7 +2,7 @@
 
 A browser brick-breaker game with **455 levels**. Open `index.html` in any browser to play — no install or build step.
 
-The board is tall (480 × 720), leaving plenty of open space between the bricks and your paddle so you have time to react, and it scales to fill your screen.
+The board is tall (480 × 720), leaving plenty of open space between the bricks and your paddle so you have time to react, and it scales to fill your screen. The final level, 455, gets an even taller board (480 × 840) to make it a little easier.
 
 Levels 1–10 are a warm-up. **Level 11 starts Hard mode**: the ball jumps to 25% faster, the paddle shrinks by 20%, bricks get two extra hits (up to 7), unbreakable bricks double, power-ups drop half as often, and the wall starts falling right away. Bosses get 50% more health and bomb faster.
 
