@@ -16,7 +16,9 @@ The look is gritty neon: a grainy dark backdrop with soft colour glows, rough ch
 
 Your highest level is saved in the browser, so you can continue where you left off.
 
-**Controls:** move with the mouse, touch, or ← → / A D · launch with click, tap, or Space · pause with P.
+**Controls:** move with the mouse, touch, or ← → / A D · launch with click, tap, or Space · pause with P · mute with M or the speaker button.
+
+**Sound:** every sound is synthesised live in the browser (no audio files): paddle and wall bounces, brick hits and breaks (pitch rises with brick toughness), clinks off steel, power-up jingles, a fiery whoosh for the fireball, boss hits, bomb drops and explosions, the creeping wall's rumble, and level-up, game-over and victory tunes. Sound starts after your first click or key press, and the mute setting is remembered.
 
 **Power-ups:** W wide paddle · M multi-ball · S slow ball · F fireball · ♥ extra life
 

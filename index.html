@@ -32,6 +32,17 @@
             padding: .6rem 1rem; border-radius: 16px 16px 0 0; font-weight: 600; font-size: .9rem; color: var(--muted);
         }
         .hud b { color: var(--text); font-variant-numeric: tabular-nums; }
+        .hud { align-items: center; }
+        .sound-btn {
+            all: unset; cursor: pointer; display: grid; place-items: center; width: 28px; height: 28px;
+            border-radius: 8px; color: var(--text); background: rgba(255,255,255,.06);
+        }
+        .sound-btn:hover { background: rgba(255,255,255,.12); }
+        .sound-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .sound-btn .off { display: none; }
+        .sound-btn.muted .on { display: none; }
+        .sound-btn.muted .off { display: inline; }
+        .sound-btn.muted { color: var(--muted); }
         .stage { position: relative; }
         canvas {
             display: block; width: 100%; aspect-ratio: 4 / 5; background: #0a0f24;
@@ -67,6 +78,13 @@
             <span>Level <b id="level">1</b>/455</span>
             <span>Lives <b id="lives">3</b></span>
             <span>Best <b id="best">0</b></span>
+            <button class="sound-btn" id="sound" aria-label="Mute sound" title="Sound on (M)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M11 5 6 9H3v6h3l5 4V5z" fill="currentColor" stroke="none"/>
+                    <path class="on" d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/>
+                    <path class="off" d="m16 9 6 6m0-6-6 6"/>
+                </svg>
+            </button>
         </div>
         <div class="stage">
             <canvas id="game" width="480" height="600"></canvas>
@@ -80,7 +98,7 @@
                 </div>
             </div>
         </div>
-        <p class="help">Move: mouse, touch, or ← → / A D &nbsp;·&nbsp; Launch: click, tap, or Space &nbsp;·&nbsp; Pause: P</p>
+        <p class="help">Move: mouse, touch, or ← → / A D &nbsp;·&nbsp; Launch: click, tap, or Space &nbsp;·&nbsp; Pause: P &nbsp;·&nbsp; Sound: M</p>
     </div>
 
     <script>
@@ -199,6 +217,106 @@
             return out;
         }
 
+        /* ---------- sound: everything is synthesised with Web Audio, no files ---------- */
+        const sfx = (() => {
+            let ac = null, master = null, noise = null, muted = false;
+            try { muted = localStorage.getItem('brickBreakerMuted') === '1'; } catch (e) {}
+            const lastPlayed = {};
+
+            // browsers only allow audio after a click, tap or key press
+            function unlock() {
+                if (muted) return;
+                try {
+                    if (!ac) {
+                        ac = new (window.AudioContext || window.webkitAudioContext)();
+                        const comp = ac.createDynamicsCompressor();   // keeps many sounds at once from clipping
+                        master = ac.createGain(); master.gain.value = .55;
+                        master.connect(comp); comp.connect(ac.destination);
+                        noise = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
+                        const d = noise.getChannelData(0);
+                        for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+                    }
+                    if (ac.state === 'suspended') ac.resume();
+                } catch (e) { ac = null; }
+            }
+
+            // skip a sound if the same one played a moment ago (multi-ball and fireball fire lots of hits)
+            function ok(name, gap) {
+                if (muted || !ac || ac.state !== 'running') return false;
+                const t = ac.currentTime;
+                if (lastPlayed[name] && t - lastPlayed[name] < gap) return false;
+                lastPlayed[name] = t;
+                return true;
+            }
+
+            function tone(freq, dur, { type = 'sine', vol = .3, to = null, delay = 0, attack = .004 } = {}) {
+                const t = ac.currentTime + delay, o = ac.createOscillator(), g = ac.createGain();
+                o.type = type; o.frequency.setValueAtTime(freq, t);
+                if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+                g.gain.setValueAtTime(0, t);
+                g.gain.linearRampToValueAtTime(vol, t + attack);
+                g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+                o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + .02);
+            }
+
+            function hiss(dur, { vol = .3, freq = 1200, to = null, q = .8, type = 'bandpass', delay = 0 } = {}) {
+                const t = ac.currentTime + delay, src = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+                src.buffer = noise; src.playbackRate.value = .8 + Math.random() * .4;
+                f.type = type; f.Q.value = q; f.frequency.setValueAtTime(freq, t);
+                if (to) f.frequency.exponentialRampToValueAtTime(to, t + dur);
+                g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+                src.connect(f); f.connect(g); g.connect(master);
+                src.start(t, Math.random() * .5); src.stop(t + dur + .02);
+            }
+
+            const vary = (f, amt = .06) => f * (1 + (Math.random() - .5) * amt);
+
+            return {
+                unlock,
+                get muted() { return muted; },
+                toggle() {
+                    muted = !muted;
+                    try { localStorage.setItem('brickBreakerMuted', muted ? '1' : '0'); } catch (e) {}
+                    if (!muted) unlock();
+                    return muted;
+                },
+                launch()  { if (ok('launch', .1)) { tone(320, .12, { type: 'triangle', vol: .18, to: 640 }); hiss(.12, { vol: .08, freq: 2500, to: 5000 }); } },
+                paddle()  { if (ok('paddle', .04)) { tone(vary(330), .09, { type: 'triangle', vol: .28, to: 220 }); } },
+                wall()    { if (ok('wall', .06)) { tone(vary(900), .03, { type: 'square', vol: .04 }); } },
+                hit()     { if (ok('hit', .03)) { tone(vary(260), .06, { type: 'square', vol: .1, to: 180 }); hiss(.05, { vol: .12, freq: 900 }); } },
+                steel()   { if (ok('steel', .05)) { tone(vary(1850, .03), .18, { vol: .12 }); tone(vary(2780, .03), .12, { vol: .07 }); } },
+                // pitch climbs with the brick's toughness, so different bricks sound different
+                brick(hp, fire) {
+                    if (!ok('brick', .025)) return;
+                    if (fire) { hiss(.22, { vol: .32, freq: 700, to: 2600, q: .6 }); tone(vary(140), .16, { type: 'sawtooth', vol: .07, to: 70 }); return; }
+                    const f = 440 * Math.pow(2, (hp - 1) * 2 / 12);
+                    tone(vary(f, .04), .1, { type: 'triangle', vol: .2, to: f * .6 });
+                    hiss(.09, { vol: .2, freq: 2200, to: 700, q: 1.2 });
+                },
+                power(kind) {
+                    if (!ok('power', .05)) return;
+                    if (kind === 'F') { hiss(.5, { vol: .35, freq: 300, to: 3500, q: .7 }); tone(110, .45, { type: 'sawtooth', vol: .08, to: 220 }); return; }
+                    const base = { W: 523, M: 587, S: 440, L: 659 }[kind] || 523;
+                    [1, 1.26, 1.5, 2].forEach((m, i) => tone(base * m, .12, { type: 'triangle', vol: .17, delay: i * .055 }));
+                },
+                lose()    { if (ok('lose', .3)) { tone(440, .55, { type: 'sawtooth', vol: .14, to: 70 }); hiss(.4, { vol: .12, freq: 600, to: 120, type: 'lowpass' }); } },
+                rumble()  { if (ok('rumble', .3)) { tone(55, .45, { type: 'sawtooth', vol: .12, to: 40 }); hiss(.4, { vol: .18, freq: 180, type: 'lowpass', q: .5 }); } },
+                bombDrop(){ if (ok('bombDrop', .15)) { tone(1400, .35, { vol: .05, to: 500 }); } },
+                boom()    { if (ok('boom', .1)) { hiss(.6, { vol: .55, freq: 900, to: 80, type: 'lowpass', q: .4 }); tone(90, .5, { type: 'sine', vol: .35, to: 35 }); } },
+                bossHit(dmg) { if (ok('bossHit', .06)) { tone(vary(dmg > 1 ? 85 : 120), .16, { type: 'square', vol: .16, to: 55 }); hiss(.12, { vol: .16, freq: 500, type: 'lowpass' }); } },
+                bossDie() {
+                    if (!ok('bossDie', 1)) return;
+                    for (let i = 0; i < 4; i++) hiss(.7, { vol: .45, freq: 1200, to: 70, type: 'lowpass', q: .3, delay: i * .14 });
+                    tone(70, 1.1, { type: 'sawtooth', vol: .18, to: 30 });
+                    [523, 659, 784, 1047].forEach((f, i) => tone(f, .3, { type: 'triangle', vol: .16, delay: .6 + i * .1 }));
+                },
+                bossWarn(){ if (ok('bossWarn', .5)) { [0, .28].forEach(d => tone(196, .24, { type: 'sawtooth', vol: .1, to: 185, delay: d })); } },
+                levelUp() { if (ok('levelUp', .5)) { [523, 659, 784, 1047].forEach((f, i) => tone(f, .22, { type: 'triangle', vol: .18, delay: i * .09 })); } },
+                gameOver(){ if (ok('gameOver', .5)) { [392, 311, 247, 196].forEach((f, i) => tone(f, .32, { type: 'triangle', vol: .2, delay: i * .18 })); } },
+                win()     { if (ok('win', 1)) { [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => tone(f, .3, { type: 'triangle', vol: .2, delay: i * .12 })); } },
+            };
+        })();
+
         /* ---------- state ---------- */
         let best = 0, reached = 1;
         try {
@@ -265,6 +383,7 @@
         }
 
         function launch() {
+            if (balls.some(b => b.stuck)) sfx.launch();
             for (const b of balls) {
                 if (!b.stuck) continue;
                 const a = aimAngle(), s = ballSpeed();
@@ -298,9 +417,10 @@
         function hitBrick(br) {
             const cx = br.x + BRICK_W / 2, cy = br.y + BRICK_H / 2;
             br.flash = performance.now();
-            if (br.steel) { burst(cx, cy, '#cfd8ff', 3); return; }
+            if (br.steel) { burst(cx, cy, '#cfd8ff', 3); sfx.steel(); return; }
             br.hp--;
-            if (br.hp > 0) { burst(cx, cy, '#fff', 4); return; }
+            if (br.hp > 0) { burst(cx, cy, '#fff', 4); sfx.hit(); return; }
+            sfx.brick(br.maxHp, fireTimer > 0);
             bricks.splice(bricks.indexOf(br), 1);
             score += 10 * br.maxHp + level;
             burst(cx, cy, brickColor({ hp: br.maxHp }));
@@ -318,12 +438,14 @@
             if (now - (boss.lastHit || 0) < 300) return;
             boss.lastHit = now;
             boss.hp = Math.max(0, boss.hp - dmg); boss.flash = now; score += 5 * dmg; shake = Math.max(shake, 3 * dmg);
+            if (boss.hp > 0) sfx.bossHit(dmg);
             burst(Math.max(boss.x, Math.min(balls[0] ? balls[0].x : 0, boss.x + boss.w)), boss.y + boss.h, '#c06bff', 6);
             if (Math.random() < diff.drop * 0.6) {
                 const kinds = ['W', 'M', 'S', 'L', 'F'];
                 drops.push({ x: boss.x + boss.w / 2, y: boss.y + boss.h, kind: kinds[Math.floor(Math.random() * kinds.length)] });
             }
             if (boss.hp <= 0) {
+                sfx.bossDie();
                 score += 500 * boss.n; shake = 14; bombs = [];
                 for (let k = 0; k < 6; k++) burst(boss.x + Math.random() * boss.w, boss.y + Math.random() * boss.h, k % 2 ? '#c06bff' : '#ff5d73', 18);
             }
@@ -332,6 +454,7 @@
 
         function applyPower(kind) {
             score += 25;
+            sfx.power(kind);
             if (kind === 'W') { wideTimer = 10; paddle.w = diff.paddle * 1.6; }
             if (kind === 'S') { slowTimer = 8; rescaleBalls(); }
             if (kind === 'L') lives++;
@@ -360,6 +483,7 @@
 
         function loseLife(reason) {
             lives--; hud(); shake = 10;
+            sfx.lose();
             if (lives <= 0) return endGame(reason), false;
             resetBall();
             return true;
@@ -389,6 +513,7 @@
                 descendTimer = diff.descend;
                 for (const br of bricks) br.y += ROW_STEP;
                 shifted += ROW_STEP;
+                sfx.rumble();
                 if (bricks.some(br => br.y + BRICK_H >= DANGER_Y)) {
                     for (const br of bricks) br.y -= shifted;
                     shifted = 0;
@@ -407,9 +532,9 @@
                     b.x += b.vx * dt / steps;
                     b.y += b.vy * dt / steps;
 
-                    if (b.x < BORDER + b.r) { b.x = BORDER + b.r; b.vx = Math.abs(b.vx); }
-                    if (b.x > W - BORDER - b.r) { b.x = W - BORDER - b.r; b.vx = -Math.abs(b.vx); }
-                    if (b.y < BORDER + b.r) { b.y = BORDER + b.r; b.vy = Math.abs(b.vy); }
+                    if (b.x < BORDER + b.r) { b.x = BORDER + b.r; b.vx = Math.abs(b.vx); sfx.wall(); }
+                    if (b.x > W - BORDER - b.r) { b.x = W - BORDER - b.r; b.vx = -Math.abs(b.vx); sfx.wall(); }
+                    if (b.y < BORDER + b.r) { b.y = BORDER + b.r; b.vy = Math.abs(b.vy); sfx.wall(); }
 
                     if (b.vy > 0 && b.y + b.r >= paddle.y && b.y - b.r <= paddle.y + paddle.h &&
                         Math.abs(b.x - paddle.x) <= paddle.w / 2 + b.r) {
@@ -418,6 +543,7 @@
                         const sp = ballSpeed();
                         b.vx = Math.cos(a) * sp; b.vy = Math.sin(a) * sp;
                         b.y = paddle.y - b.r;
+                        sfx.paddle();
                     }
 
                     for (const br of bricks) {
@@ -471,6 +597,7 @@
                 if (balls.some(b => !b.stuck) && (boss.bombTimer -= dt * angry) <= 0) {
                     boss.bombTimer = boss.bombEvery;
                     bombs.push({ x: boss.x + boss.w * (.25 + Math.random() * .5), y: boss.y + boss.h, vy: 170 + boss.n * 9 });
+                    sfx.bombDrop();
                 }
             }
             for (let i = bombs.length - 1; i >= 0; i--) {
@@ -478,6 +605,7 @@
                 bm.y += bm.vy * dt;
                 if (bm.y + 7 >= paddle.y && bm.y - 7 <= paddle.y + paddle.h && Math.abs(bm.x - paddle.x) <= paddle.w / 2 + 7) {
                     burst(bm.x, bm.y, '#ff4d6d', 24);
+                    sfx.boom();
                     bombs.splice(i, 1);
                     if (!loseLife('A boss bomb hit you.')) return;
                     break;
@@ -509,6 +637,7 @@
             if (level >= MAX_LEVEL) {
                 save();
                 state = 'over';
+                sfx.win();
                 return showOverlay('You beat all 455 levels!', 'Final score: ' + score + '. Unbelievable.', [], 'Play Again', false);
             }
             const prev = diff;
@@ -524,6 +653,7 @@
                 diff.steel ? `Steel bricks <b>${Math.round(diff.steel * 100)}%</b>` : '',
                 diff.descend ? `Wall drops every <b>${diff.descend.toFixed(1)}s</b>` : '',
             ].filter(Boolean);
+            if (boss) sfx.bossWarn(); else sfx.levelUp();
             if (boss) {
                 stats.splice(2, 99, `Boss health <b>${boss.maxHp} hits</b>`, `Bomb every <b>${boss.bombEvery.toFixed(1)}s</b>`);
                 showOverlay('Boss ' + boss.n + ' — Level ' + level, 'Level bonus +' + bonus + '. A giant moving brick drops bombs. Don\'t let them hit your paddle.', stats, 'Fight', false);
@@ -928,6 +1058,7 @@
 
         function endGame(reason) {
             state = 'over';
+            sfx.gameOver();
             if (score > best) best = score;
             $('best').textContent = best;
             save();
@@ -941,6 +1072,16 @@
                 $('restart').classList.remove('hidden');
             }
         }
+
+        const soundBtn = $('sound');
+        function showSound() {
+            soundBtn.classList.toggle('muted', sfx.muted);
+            soundBtn.setAttribute('aria-label', sfx.muted ? 'Turn sound on' : 'Mute sound');
+            soundBtn.title = sfx.muted ? 'Sound off (M)' : 'Sound on (M)';
+        }
+        soundBtn.addEventListener('click', () => { sfx.toggle(); showSound(); soundBtn.blur(); });
+        showSound();
+        for (const ev of ['pointerdown', 'keydown']) document.addEventListener(ev, () => sfx.unlock(), { capture: true });
 
         $('start').addEventListener('click', () => {
             if (state === 'menu') newGame(reached);
@@ -969,6 +1110,7 @@
             keys[e.key.length === 1 ? e.key.toLowerCase() : e.key] = true;
             if (e.key === ' ' || e.key.startsWith('Arrow')) e.preventDefault();
             if (e.key === ' ' && state === 'playing') launch();
+            if (e.key === 'm' || e.key === 'M') { sfx.toggle(); showSound(); }
             if ((e.key === 'p' || e.key === 'P') && (state === 'playing' || state === 'paused')) {
                 state = state === 'playing' ? 'paused' : 'playing';
             }
