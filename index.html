@@ -93,7 +93,9 @@
         const $ = id => document.getElementById(id);
 
         const MAX_LEVEL = 455;
-        const VARIANTS = 4;   // rough-cut sprite variations so neighbouring bricks don't look identical
+        const VARIANTS = 4;
+        const BOSS_EVERY = 25;   // levels 25, 50, 75 … 450 are boss fights
+        const isBossLevel = L => L % BOSS_EVERY === 0;   // rough-cut sprite variations so neighbouring bricks don't look identical
         const BORDER = 10;                       // glowing walls on the left, right and top
         const COLS = 10, BRICK_H = 20, BRICK_GAP = 4, TOP = BORDER + 30;
         const BRICK_W = (W - 2 * BORDER - BRICK_GAP * (COLS - 1)) / COLS;
@@ -162,6 +164,7 @@
             ({ x: BORDER + c * (BRICK_W + BRICK_GAP), y: TOP + r * ROW_STEP, hp, maxHp: hp, steel, v: (r * 7 + c * 3) % VARIANTS });
 
         function buildLevel(L, seed = L) {
+            if (isBossLevel(L)) return [];
             if (L === 1) {
                 const out = [];
                 LEVEL_ONE.forEach((row, r) => [...row].forEach((ch, c) => {
@@ -204,7 +207,7 @@
         $('best').textContent = best;
 
         const keys = {};
-        let paddle, balls, bricks, drops, particles, diff;
+        let paddle, balls, bricks, drops, particles, diff, boss = null, bombs = [];
         let score = 0, lives = 3, level = 1, state = 'menu', last;
         let wideTimer = 0, slowTimer = 0, descendTimer = 0, shifted = 0, aimT = 0, shake = 0;
         const aimAngle = () => -Math.PI / 2 + Math.sin(aimT * 2.2) * 0.9;
@@ -222,8 +225,21 @@
             } catch (e) {}
         }
 
+        function makeBoss(L) {
+            const n = L / BOSS_EVERY;                      // 1st boss, 2nd boss, …
+            const w = 4 * BRICK_W + 3 * BRICK_GAP, h = 56;
+            return {
+                n, w, h, x: W / 2 - w / 2, baseY: TOP + 34, y: TOP + 34, t: 0,
+                hp: 30 + (n - 1) * 6, maxHp: 30 + (n - 1) * 6,
+                vx: (70 + n * 12) * (Math.random() < .5 ? -1 : 1),
+                bombEvery: Math.max(0.8, 3.2 - n * 0.13), bombTimer: 2.5, flash: 0,
+            };
+        }
+
         function loadLevel() {
-            diff = difficulty(level);
+            diff = { ...difficulty(level) };
+            boss = isBossLevel(level) ? makeBoss(level) : null;
+            if (boss) diff.descend = 0;                    // the boss moves instead of the wall
             bricks = buildLevel(level);
             shifted = 0;
             descendTimer = diff.descend;
@@ -235,7 +251,7 @@
 
         function resetBall() {
             balls = [{ x: paddle.x, y: paddle.y - 10, vx: 0, vy: 0, r: 7, stuck: true }];
-            drops = [];
+            drops = []; bombs = [];
             wideTimer = slowTimer = 0;
             paddle.w = diff.paddle;
         }
@@ -280,6 +296,24 @@
                 const r = Math.random();
                 const kind = r < 0.08 ? 'L' : r < 0.4 ? 'W' : r < 0.7 ? 'M' : 'S';
                 drops.push({ x: cx, y: br.y, kind });
+            }
+            hud();
+        }
+
+        function hitBoss() {
+            // a short shield after each hit so a ball trapped above the boss can't drain it in seconds
+            const now = performance.now();
+            if (now - (boss.lastHit || 0) < 300) return;
+            boss.lastHit = now;
+            boss.hp--; boss.flash = now; score += 5; shake = Math.max(shake, 3);
+            burst(Math.max(boss.x, Math.min(balls[0] ? balls[0].x : 0, boss.x + boss.w)), boss.y + boss.h, '#c06bff', 6);
+            if (Math.random() < diff.drop * 0.6) {
+                const kinds = ['W', 'M', 'S', 'L'];
+                drops.push({ x: boss.x + boss.w / 2, y: boss.y + boss.h, kind: kinds[Math.floor(Math.random() * kinds.length)] });
+            }
+            if (boss.hp <= 0) {
+                score += 500 * boss.n; shake = 14; bombs = [];
+                for (let k = 0; k < 6; k++) burst(boss.x + Math.random() * boss.w, boss.y + Math.random() * boss.h, k % 2 ? '#c06bff' : '#ff5d73', 18);
             }
             hud();
         }
@@ -374,6 +408,18 @@
                             break;
                         }
                     }
+
+                    if (boss && boss.hp > 0) {
+                        const cx = Math.max(boss.x, Math.min(b.x, boss.x + boss.w));
+                        const cy = Math.max(boss.y, Math.min(b.y, boss.y + boss.h));
+                        const dx = b.x - cx, dy = b.y - cy;
+                        if (dx * dx + dy * dy <= b.r * b.r) {
+                            if (dx === 0 && dy === 0) { b.y = boss.y + boss.h + b.r; b.vy = Math.abs(b.vy); }   // boss moved onto the ball
+                            else if (Math.abs(dx) > Math.abs(dy)) { b.vx = Math.sign(dx) * Math.abs(b.vx); b.x = cx + Math.sign(dx) * b.r; }
+                            else { b.vy = Math.sign(dy) * Math.abs(b.vy); b.y = cy + Math.sign(dy) * b.r; }
+                            hitBoss();
+                        }
+                    }
                 }
                 // stop near-horizontal loops between steel bricks and walls
                 if (Math.abs(b.vy) < ballSpeed() * 0.2) {
@@ -386,6 +432,29 @@
             }
 
             if (balls.length === 0 && !loseLife('Out of balls.')) return;
+
+            if (boss && boss.hp > 0) {
+                const angry = boss.hp < boss.maxHp / 3 ? 1.5 : 1;   // speeds up when badly hurt
+                boss.t += dt;
+                boss.x += boss.vx * angry * dt;
+                if (boss.x < BORDER) { boss.x = BORDER; boss.vx = Math.abs(boss.vx); }
+                if (boss.x + boss.w > W - BORDER) { boss.x = W - BORDER - boss.w; boss.vx = -Math.abs(boss.vx); }
+                boss.y = boss.baseY + Math.sin(boss.t * 1.6) * 14;
+                if (balls.some(b => !b.stuck) && (boss.bombTimer -= dt * angry) <= 0) {
+                    boss.bombTimer = boss.bombEvery;
+                    bombs.push({ x: boss.x + boss.w * (.25 + Math.random() * .5), y: boss.y + boss.h, vy: 170 + boss.n * 9 });
+                }
+            }
+            for (let i = bombs.length - 1; i >= 0; i--) {
+                const bm = bombs[i];
+                bm.y += bm.vy * dt;
+                if (bm.y + 7 >= paddle.y && bm.y - 7 <= paddle.y + paddle.h && Math.abs(bm.x - paddle.x) <= paddle.w / 2 + 7) {
+                    burst(bm.x, bm.y, '#ff4d6d', 24);
+                    bombs.splice(i, 1);
+                    if (!loseLife('A boss bomb hit you.')) return;
+                    break;
+                } else if (bm.y > H + 10) bombs.splice(i, 1);
+            }
 
             for (let i = drops.length - 1; i >= 0; i--) {
                 const d = drops[i];
@@ -401,7 +470,7 @@
                 if (p.life <= 0) particles.splice(i, 1);
             }
 
-            if (!bricks.some(b => !b.steel)) levelComplete();
+            if (!bricks.some(b => !b.steel) && (!boss || boss.hp <= 0)) levelComplete();
         }
 
         function levelComplete() {
@@ -427,7 +496,12 @@
                 diff.steel ? `Steel bricks <b>${Math.round(diff.steel * 100)}%</b>` : '',
                 diff.descend ? `Wall drops every <b>${diff.descend.toFixed(1)}s</b>` : '',
             ].filter(Boolean);
-            showOverlay('Level ' + level, 'Level bonus +' + bonus + '. It only gets harder from here.', stats, 'Continue', false);
+            if (boss) {
+                stats.splice(2, 99, `Boss health <b>${boss.maxHp} hits</b>`, `Bomb every <b>${boss.bombEvery.toFixed(1)}s</b>`);
+                showOverlay('Boss ' + boss.n + ' — Level ' + level, 'Level bonus +' + bonus + '. A giant moving brick drops bombs. Don\'t let them hit your paddle.', stats, 'Fight', false);
+            } else {
+                showOverlay('Level ' + level, 'Level bonus +' + bonus + '. It only gets harder from here.', stats, 'Continue', false);
+            }
             state = 'between';
         }
 
@@ -572,6 +646,86 @@
 
         function rect(x, y, w, h, r) { rr(ctx, x, y, w, h, r); ctx.fill(); }
 
+        const BOSS_W = 4 * BRICK_W + 3 * BRICK_GAP, BOSS_H = 56, BOSS_PAD = 16;
+        const BOSS_SPRITE = sprite(BOSS_W + BOSS_PAD * 2, BOSS_H + BOSS_PAD * 2, (g) => {
+            const x = BOSS_PAD, y = BOSS_PAD, w = BOSS_W, h = BOSS_H, rand = rng(4242);
+            roughPath(g, x, y, w, h, rand);
+            g.shadowColor = 'rgba(192,107,255,.6)'; g.shadowBlur = 16;
+            const grad = g.createLinearGradient(0, y, 0, y + h);
+            grad.addColorStop(0, '#5a2a82'); grad.addColorStop(1, '#2a1240');
+            g.fillStyle = grad; g.fill(); g.shadowBlur = 0;
+            g.save(); g.clip();
+            g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 3;
+            for (let k = -h; k < w; k += 14) { g.beginPath(); g.moveTo(x + k, y + h); g.lineTo(x + k + h, y); g.stroke(); }
+            g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(x, y, w, 2.5);
+            g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(x, y + h - 5, w, 5);
+            grit(g, x, y, w, h, rand, .3);
+            g.restore();
+            for (const rx of [x + 9, x + w - 9]) for (const ry of [y + 9, y + h - 10]) {
+                g.fillStyle = '#b9a3d6'; g.beginPath(); g.arc(rx, ry, 2.6, 0, Math.PI * 2); g.fill();
+                g.fillStyle = '#1a0d28'; g.beginPath(); g.arc(rx + .7, ry + .7, 1.2, 0, Math.PI * 2); g.fill();
+            }
+            roughPath(g, x + .5, y + .5, w - 1, h - 1, rng(4242));
+            g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 1.5; g.stroke();
+        });
+
+        function drawBoss(now) {
+            const { x, y, w, h } = boss;
+            const angry = boss.hp < boss.maxHp / 3;
+            ctx.drawImage(BOSS_SPRITE, x - BOSS_PAD, y - BOSS_PAD, w + BOSS_PAD * 2, h + BOSS_PAD * 2);
+            // cracks spread as it takes damage
+            const dmg = 1 - boss.hp / boss.maxHp, rand = rng(77);
+            ctx.strokeStyle = `rgba(10,5,20,${.5 + dmg * .4})`; ctx.lineWidth = 1.5;
+            for (let i = 0; i < Math.ceil(dmg * 10); i++) {
+                let cx = x + 8 + rand() * (w - 16), cy = y + 3;
+                ctx.beginPath(); ctx.moveTo(cx, cy);
+                for (let k = 0; k < 5; k++) { cx += (rand() - .5) * 14; cy += h / 5 - 1; ctx.lineTo(cx, cy); }
+                ctx.stroke();
+            }
+            // eyes follow the ball
+            const target = balls[0] || { x: paddle.x, y: paddle.y };
+            for (const ex of [x + w * .32, x + w * .68]) {
+                const ey = y + h * .45;
+                ctx.save(); ctx.shadowColor = angry ? '#ff4d6d' : '#7cf3ff'; ctx.shadowBlur = 14;
+                ctx.fillStyle = angry ? '#ffd6dc' : '#e6fbff';
+                ctx.beginPath(); ctx.ellipse(ex, ey, 13, angry ? 7 : 10, 0, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+                const a = Math.atan2(target.y - ey, target.x - ex);
+                ctx.fillStyle = angry ? '#d90429' : '#0a0f24';
+                ctx.beginPath(); ctx.arc(ex + Math.cos(a) * 5, ey + Math.sin(a) * (angry ? 2 : 4), 4.5, 0, Math.PI * 2); ctx.fill();
+                if (angry) {   // angry brows
+                    ctx.strokeStyle = '#0a0f24'; ctx.lineWidth = 3;
+                    const dir = ex < x + w / 2 ? 1 : -1;
+                    ctx.beginPath(); ctx.moveTo(ex - 13 * dir, ey - 13); ctx.lineTo(ex + 11 * dir, ey - 7); ctx.stroke();
+                }
+            }
+            const f = boss.flash ? 1 - (now - boss.flash) / 120 : 0;
+            if (f > 0) { ctx.fillStyle = `rgba(255,255,255,${f * .45})`; ctx.fillRect(x + 2, y + 2, w - 4, h - 4); }
+
+            // health bar
+            const bx = BORDER + 50, bw = W - 2 * BORDER - 60, by = BORDER + 9;
+            ctx.fillStyle = 'rgba(230,233,245,.75)'; ctx.font = '800 11px Inter, system-ui, sans-serif';
+            ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+            ctx.fillText('BOSS ' + boss.n, BORDER + 6, by + 3);
+            ctx.fillStyle = 'rgba(255,255,255,.1)'; rect(bx, by, bw, 7, 3.5);
+            const hg = ctx.createLinearGradient(bx, 0, bx + bw, 0);
+            hg.addColorStop(0, '#ff5d73'); hg.addColorStop(1, '#c06bff');
+            ctx.fillStyle = hg; rect(bx, by, Math.max(0, bw * boss.hp / boss.maxHp), 7, 3.5);
+            ctx.textAlign = 'center';
+        }
+
+        function drawBombs(now) {
+            for (const bm of bombs) {
+                const pulse = .5 + .5 * Math.sin(now / 70);
+                ctx.save(); ctx.shadowColor = '#ff4d6d'; ctx.shadowBlur = 12 + pulse * 8;
+                ctx.fillStyle = '#2a0b14'; ctx.beginPath(); ctx.arc(bm.x, bm.y, 7, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+                ctx.fillStyle = `rgba(255,77,109,${.6 + pulse * .4})`; ctx.beginPath(); ctx.arc(bm.x, bm.y, 3.5, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = '#ffb703'; ctx.lineWidth = 1.5;                     // fuse spark
+                ctx.beginPath(); ctx.moveTo(bm.x, bm.y - 7); ctx.lineTo(bm.x + 2, bm.y - 11); ctx.stroke();
+            }
+        }
+
         function drawPaddle() {
             const { x, y, w, h } = paddle, left = x - w / 2;
             const wide = wideTimer > 0;
@@ -636,6 +790,8 @@
                 ctx.fillStyle = '#0a0f24'; ctx.fillText(d.kind === 'L' ? '♥' : d.kind, d.x, d.y + 1);
             }
 
+            if (boss && boss.hp > 0) drawBoss(now);
+            drawBombs(now);
             drawPaddle();
 
             if (state !== 'over') for (const b of balls) {

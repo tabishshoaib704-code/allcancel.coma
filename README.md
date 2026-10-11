@@ -10,6 +10,8 @@ Every level is harder than the one before it:
 - from level 12 the whole wall creeps down toward you, faster each level, and costs a life if it reaches the glowing red line
 - power-ups get rarer
 
+**Boss fights** every 25 levels (25, 50, 75 … 450): a giant brick with eyes that slides around and drops bombs. Don't let a bomb touch your paddle. The first boss takes 30 hits; each one after takes 6 more (up to 132), moves faster and bombs more often. Below a third of its health it gets angry and speeds up.
+
 The look is gritty neon: a grainy dark backdrop with soft colour glows, rough chipped bricks, a glowing paddle and ball with a light trail, tumbling debris, and a dotted aiming guide that sweeps back and forth before each launch — fire when it points where you want the ball to go. It renders sharply on high-resolution screens.
 
 Your highest level is saved in the browser, so you can continue where you left off.
