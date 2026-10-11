@@ -271,8 +271,15 @@
             const lastPlayed = {};
 
             // browsers only allow audio after a click, tap or key press
+            // Called on every tap, click and key press until audio is running. Safari only accepts
+            // some of those events as permission (a finished tap, not a finger touching down), so we
+            // listen to all of them and keep asking.
             function unlock() {
-                if (muted) return;
+                if (muted || (ac && ac.state === 'running')) return;
+                try {
+                    // iPhone/iPad: play game audio even when the ring/silent switch is on silent
+                    if (navigator.audioSession && navigator.audioSession.type !== 'playback') navigator.audioSession.type = 'playback';
+                } catch (e) {}
                 try {
                     if (!ac) {
                         ac = new (window.AudioContext || window.webkitAudioContext)();
@@ -283,7 +290,14 @@
                         const d = noise.getChannelData(0);
                         for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
                     }
-                    if (ac.state === 'suspended') ac.resume();
+                    if (ac.state !== 'running') {                 // 'suspended', or 'interrupted' on iOS
+                        const p = ac.resume();
+                        if (p && p.catch) p.catch(() => {});
+                        // a silent one-sample sound inside the gesture finishes unlocking older iOS
+                        const src = ac.createBufferSource();
+                        src.buffer = ac.createBuffer(1, 1, ac.sampleRate);
+                        src.connect(ac.destination); src.start(0);
+                    }
                 } catch (e) { ac = null; }
             }
 
@@ -1203,7 +1217,8 @@
         }
         soundBtn.addEventListener('click', () => { sfx.toggle(); showSound(); soundBtn.blur(); });
         showSound();
-        for (const ev of ['pointerdown', 'keydown']) document.addEventListener(ev, () => sfx.unlock(), { capture: true });
+        for (const ev of ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'mousedown', 'click', 'keydown'])
+            document.addEventListener(ev, () => sfx.unlock(), { capture: true, passive: true });
 
         $('start').addEventListener('click', () => {
             if (state === 'menu') newGame(reached);
