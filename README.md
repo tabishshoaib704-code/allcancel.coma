@@ -22,4 +22,4 @@ Your highest level is saved in the browser, so you can continue where you left o
 
 **Power-ups:** W wide paddle · M multi-ball · S slow ball · F fireball · ♥ extra life
 
-**Fireball (F):** for 8 seconds the ball bursts into flame and smashes straight through bricks in one hit, however tough, without bouncing. Unbreakable bricks still stop it, and against a boss each hit counts triple. It flickers just before it runs out.
+**Fireball (F):** for 8 seconds the ball bursts into flame and smashes straight through bricks in one hit, however tough, without bouncing. Unbreakable bricks still stop it, and against a boss each hit counts triple. It flickers just before it runs out. A fireball is guaranteed to drop at least once every 20 broken bricks (or every 10 boss hits), so you'll see it on every level. Catch the orange F with your paddle to use it.

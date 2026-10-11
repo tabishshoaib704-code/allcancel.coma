@@ -123,6 +123,7 @@
         const STEEL = '#9aa6c7';
         const POWERS = { W: '#7cf3ff', M: '#9dff8a', S: '#ff8ad8', L: '#ff6b81', F: '#ff9a3c' };
         const FIRE_TIME = 8;   // seconds the fireball lasts
+        const FIRE_GUARANTEE = 20;   // a fireball is guaranteed to drop at least once every 20 broken bricks (or 10 boss hits)
         const PADDLE_Y = H - 30, DANGER_Y = PADDLE_Y - 45;
 
         /* ---------- difficulty curve: everything gets worse every level ---------- */
@@ -328,7 +329,7 @@
         const keys = {};
         let paddle, balls, bricks, drops, particles, diff, boss = null, bombs = [];
         let score = 0, lives = 3, level = 1, state = 'menu', last;
-        let wideTimer = 0, slowTimer = 0, fireTimer = 0, descendTimer = 0, shifted = 0, aimT = 0, shake = 0;
+        let sinceFire = 0, wideTimer = 0, slowTimer = 0, fireTimer = 0, descendTimer = 0, shifted = 0, aimT = 0, shake = 0;
         const aimAngle = () => -Math.PI / 2 + Math.sin(aimT * 2.2) * 0.9;
 
         function hud() {
@@ -376,7 +377,7 @@
         }
 
         function newGame(startLevel) {
-            score = 0; lives = 3; level = startLevel;
+            score = 0; lives = 3; level = startLevel; sinceFire = 0;
             paddle = { x: W / 2, y: PADDLE_Y, w: 90, h: 12 };
             particles = [];
             loadLevel();
@@ -424,12 +425,18 @@
             bricks.splice(bricks.indexOf(br), 1);
             score += 10 * br.maxHp + level;
             burst(cx, cy, brickColor({ hp: br.maxHp }));
-            if (Math.random() < diff.drop) {
+            sinceFire++;
+            if (sinceFire >= FIRE_GUARANTEE) dropPower(cx, br.y, 'F');
+            else if (Math.random() < diff.drop) {
                 const r = Math.random();
-                const kind = r < 0.08 ? 'L' : r < 0.3 ? 'W' : r < 0.52 ? 'M' : r < 0.74 ? 'F' : 'S';
-                drops.push({ x: cx, y: br.y, kind });
+                dropPower(cx, br.y, r < 0.08 ? 'L' : r < 0.3 ? 'W' : r < 0.52 ? 'M' : r < 0.74 ? 'F' : 'S');
             }
             hud();
+        }
+
+        function dropPower(x, y, kind) {
+            drops.push({ x, y, kind });
+            if (kind === 'F') sinceFire = 0;
         }
 
         function hitBoss(dmg = 1) {
@@ -440,9 +447,11 @@
             boss.hp = Math.max(0, boss.hp - dmg); boss.flash = now; score += 5 * dmg; shake = Math.max(shake, 3 * dmg);
             if (boss.hp > 0) sfx.bossHit(dmg);
             burst(Math.max(boss.x, Math.min(balls[0] ? balls[0].x : 0, boss.x + boss.w)), boss.y + boss.h, '#c06bff', 6);
-            if (Math.random() < diff.drop * 0.6) {
+            sinceFire += 2;
+            if (sinceFire >= FIRE_GUARANTEE) dropPower(boss.x + boss.w / 2, boss.y + boss.h, 'F');
+            else if (Math.random() < diff.drop * 0.6) {
                 const kinds = ['W', 'M', 'S', 'L', 'F'];
-                drops.push({ x: boss.x + boss.w / 2, y: boss.y + boss.h, kind: kinds[Math.floor(Math.random() * kinds.length)] });
+                dropPower(boss.x + boss.w / 2, boss.y + boss.h, kinds[Math.floor(Math.random() * kinds.length)]);
             }
             if (boss.hp <= 0) {
                 sfx.bossDie();
