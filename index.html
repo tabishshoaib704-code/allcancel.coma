@@ -93,6 +93,7 @@
         const $ = id => document.getElementById(id);
 
         const MAX_LEVEL = 455;
+        const VARIANTS = 4;   // rough-cut sprite variations so neighbouring bricks don't look identical
         const BORDER = 10;                       // glowing walls on the left, right and top
         const COLS = 10, BRICK_H = 20, BRICK_GAP = 4, TOP = BORDER + 30;
         const BRICK_W = (W - 2 * BORDER - BRICK_GAP * (COLS - 1)) / COLS;
@@ -158,7 +159,7 @@
         ];
 
         const brickAt = (r, c, hp, steel) =>
-            ({ x: BORDER + c * (BRICK_W + BRICK_GAP), y: TOP + r * ROW_STEP, hp, maxHp: hp, steel });
+            ({ x: BORDER + c * (BRICK_W + BRICK_GAP), y: TOP + r * ROW_STEP, hp, maxHp: hp, steel, v: (r * 7 + c * 3) % VARIANTS });
 
         function buildLevel(L, seed = L) {
             if (L === 1) {
@@ -257,7 +258,8 @@
         function burst(x, y, color, n = 10) {
             for (let i = 0; i < n; i++) {
                 const a = Math.random() * Math.PI * 2, s = 40 + Math.random() * 160;
-                particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.5, color });
+                particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.5, color,
+                    size: 1.5 + Math.random() * 3.5, rot: Math.random() * 6, spin: (Math.random() - .5) * 20 });
             }
         }
 
@@ -395,7 +397,7 @@
 
             for (let i = particles.length - 1; i >= 0; i--) {
                 const p = particles[i];
-                p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 400 * dt; p.life -= dt;
+                p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 400 * dt; p.life -= dt; p.rot += p.spin * dt;
                 if (p.life <= 0) particles.splice(i, 1);
             }
 
@@ -449,36 +451,75 @@
             return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
         }
 
-        // glossy rounded tile with a soft outer glow
-        const BRICK_SPRITES = HP_COLORS.map(color => sprite(BRICK_W + GLOW * 2, BRICK_H + GLOW * 2, (g) => {
-            const x = GLOW, y = GLOW, w = BRICK_W, h = BRICK_H;
-            g.shadowColor = hexA(color, .55); g.shadowBlur = 12;
-            const grad = g.createLinearGradient(0, y, 0, y + h);
-            grad.addColorStop(0, hexA(color, 1)); grad.addColorStop(1, hexA(color, .72));
-            g.fillStyle = grad; rr(g, x, y, w, h, 6); g.fill();
-            g.shadowBlur = 0;
-            const sheen = g.createLinearGradient(0, y, 0, y + h * .55);
-            sheen.addColorStop(0, 'rgba(255,255,255,.55)'); sheen.addColorStop(1, 'rgba(255,255,255,0)');
-            g.fillStyle = sheen; rr(g, x + 2, y + 1.5, w - 4, h * .5, [5, 5, 2, 2]); g.fill();
-            g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 1; rr(g, x + .5, y + .5, w - 1, h - 1, 6); g.stroke();
-        }));
+        // chipped, slightly uneven outline
+        function roughPath(g, x, y, w, h, rand) {
+            const chip = () => 1 + rand() * 3.5, j = () => (rand() - .5) * 1.2;
+            const pts = [];
+            const edge = (x1, y1, x2, y2) => {
+                const n = Math.max(2, Math.round(Math.hypot(x2 - x1, y2 - y1) / 6));
+                for (let i = 1; i < n; i++) pts.push([x1 + (x2 - x1) * i / n + j(), y1 + (y2 - y1) * i / n + j()]);
+            };
+            const [a, b, c, d] = [chip(), chip(), chip(), chip()];
+            pts.push([x + a, y]); edge(x + a, y, x + w - b, y); pts.push([x + w - b, y], [x + w, y + b]);
+            edge(x + w, y + b, x + w, y + h - c); pts.push([x + w, y + h - c], [x + w - c, y + h]);
+            edge(x + w - c, y + h, x + d, y + h); pts.push([x + d, y + h], [x, y + h - d]);
+            edge(x, y + h - d, x, y + a); pts.push([x, y + a]);
+            g.beginPath(); pts.forEach(([px, py], i) => i ? g.lineTo(px, py) : g.moveTo(px, py)); g.closePath();
+        }
 
-        // frosted dark glass: unbreakable
-        const STEEL_SPRITE = sprite(BRICK_W + GLOW * 2, BRICK_H + GLOW * 2, (g) => {
-            const x = GLOW, y = GLOW, w = BRICK_W, h = BRICK_H;
+        // grain speckles and scratches, clipped to the current path
+        function grit(g, x, y, w, h, rand, amount) {
+            for (let i = 0; i < w * h * amount; i++) {
+                g.fillStyle = rand() < .5 ? `rgba(0,0,0,${.08 + rand() * .2})` : `rgba(255,255,255,${.05 + rand() * .14})`;
+                g.fillRect(x + rand() * w, y + rand() * h, rand() < .85 ? 1 : 2, 1);
+            }
+            g.lineWidth = .7;
+            for (let i = 0; i < 3; i++) {
+                const sx = x + rand() * w, sy = y + rand() * h;
+                g.strokeStyle = `rgba(0,0,0,${.15 + rand() * .2})`;
+                g.beginPath(); g.moveTo(sx, sy); g.lineTo(sx + (rand() - .5) * 14, sy + (rand() - .5) * 6); g.stroke();
+            }
+        }
+
+        // matte, gritty block with chipped corners and a faint glow
+        const BRICK_SPRITES = HP_COLORS.map((color, ci) => Array.from({ length: VARIANTS }, (_, vi) =>
+            sprite(BRICK_W + GLOW * 2, BRICK_H + GLOW * 2, (g) => {
+                const x = GLOW, y = GLOW, w = BRICK_W, h = BRICK_H, rand = rng(ci * 101 + vi * 13 + 5);
+                roughPath(g, x, y, w, h, rand);
+                g.shadowColor = hexA(color, .35); g.shadowBlur = 7;
+                const grad = g.createLinearGradient(0, y, 0, y + h);
+                grad.addColorStop(0, hexA(color, .95)); grad.addColorStop(1, hexA(color, .62));
+                g.fillStyle = grad; g.fill();
+                g.shadowBlur = 0;
+                g.save(); g.clip();
+                g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x, y + h - 3, w, 3);          // worn bottom edge
+                g.fillStyle = 'rgba(255,255,255,.22)'; g.fillRect(x, y, w, 2);             // rough top highlight
+                grit(g, x, y, w, h, rand, .35);
+                g.restore();
+                roughPath(g, x + .5, y + .5, w - 1, h - 1, rng(ci * 101 + vi * 13 + 5));
+                g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 1; g.stroke();
+            })));
+
+        // dark scuffed iron slab with rivets: unbreakable
+        const STEEL_SPRITES = Array.from({ length: VARIANTS }, (_, vi) => sprite(BRICK_W + GLOW * 2, BRICK_H + GLOW * 2, (g) => {
+            const x = GLOW, y = GLOW, w = BRICK_W, h = BRICK_H, rand = rng(900 + vi * 17);
+            roughPath(g, x, y, w, h, rand);
             const grad = g.createLinearGradient(x, y, x + w, y + h);
-            grad.addColorStop(0, '#46507a'); grad.addColorStop(1, '#232a46');
-            g.fillStyle = grad; rr(g, x, y, w, h, 6); g.fill();
-            g.save(); rr(g, x, y, w, h, 6); g.clip();
-            g.fillStyle = 'rgba(255,255,255,.07)';
-            for (let k = -h; k < w; k += 9) { g.beginPath(); g.moveTo(x + k, y + h); g.lineTo(x + k + h, y); g.lineTo(x + k + h + 3, y); g.lineTo(x + k + 3, y + h); g.fill(); }
+            grad.addColorStop(0, '#4a526e'); grad.addColorStop(1, '#22283d');
+            g.fillStyle = grad; g.fill();
+            g.save(); g.clip();
+            g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 2;
+            for (let k = -h; k < w; k += 8) { g.beginPath(); g.moveTo(x + k, y + h); g.lineTo(x + k + h, y); g.stroke(); }
+            g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(x, y, w, 1.5);
+            grit(g, x, y, w, h, rand, .45);
             g.restore();
-            g.strokeStyle = 'rgba(190,205,255,.45)'; g.lineWidth = 1; rr(g, x + .5, y + .5, w - 1, h - 1, 6); g.stroke();
-            g.fillStyle = 'rgba(210,220,255,.7)';
-            rr(g, x + w / 2 - 4, y + h / 2 - 1, 8, 5, 1.5); g.fill();                       // tiny lock icon
-            g.strokeStyle = 'rgba(210,220,255,.7)'; g.lineWidth = 1.4;
-            g.beginPath(); g.arc(x + w / 2, y + h / 2 - 1, 2.6, Math.PI, 0); g.stroke();
-        });
+            for (const [rx, ry] of [[x + 5, y + h / 2], [x + w - 5, y + h / 2]]) {
+                g.fillStyle = '#9aa3c0'; g.beginPath(); g.arc(rx, ry, 2, 0, Math.PI * 2); g.fill();
+                g.fillStyle = '#1a1f30'; g.beginPath(); g.arc(rx + .6, ry + .6, 1, 0, Math.PI * 2); g.fill();
+            }
+            roughPath(g, x + .5, y + .5, w - 1, h - 1, rng(900 + vi * 17));
+            g.strokeStyle = 'rgba(160,175,220,.35)'; g.lineWidth = 1; g.stroke();
+        }));
 
         // deep space backdrop: colour blobs, faint grid, vignette, neon walls
         const BACKGROUND = sprite(W, H, (g, w, h) => {
@@ -494,6 +535,17 @@
             const vg = g.createRadialGradient(w / 2, h / 2, h * .3, w / 2, h / 2, h * .75);
             vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.45)');
             g.fillStyle = vg; g.fillRect(0, 0, w, h);
+            const grain = rng(7);
+            for (let i = 0; i < 14000; i++) {
+                g.fillStyle = grain() < .5 ? `rgba(0,0,0,${.15 + grain() * .25})` : `rgba(255,255,255,${.02 + grain() * .05})`;
+                g.fillRect(grain() * w, grain() * h, 1, 1);
+            }
+            g.lineWidth = .6;
+            for (let i = 0; i < 40; i++) {
+                const sx = grain() * w, sy = grain() * h, len = 10 + grain() * 50, ang = grain() * Math.PI;
+                g.strokeStyle = `rgba(255,255,255,${.02 + grain() * .04})`;
+                g.beginPath(); g.moveTo(sx, sy); g.lineTo(sx + Math.cos(ang) * len, sy + Math.sin(ang) * len); g.stroke();
+            }
             const wall = g.createLinearGradient(0, 0, 0, h);
             wall.addColorStop(0, '#7cf3ff'); wall.addColorStop(1, 'rgba(183,140,255,.15)');
             g.shadowColor = '#7cf3ff'; g.shadowBlur = 14; g.fillStyle = wall;
@@ -508,7 +560,7 @@
             const dmg = 1 - br.hp / br.maxHp;
             if (dmg <= 0) return;
             const rand = rng(Math.round(br.x * 31 + br.maxHp));
-            ctx.strokeStyle = `rgba(255,255,255,${0.25 + dmg * 0.45})`; ctx.lineWidth = 1;
+            ctx.strokeStyle = `rgba(10,8,20,${0.45 + dmg * 0.45})`; ctx.lineWidth = 1.2;
             const n = Math.ceil(dmg * 4);
             for (let i = 0; i < n; i++) {
                 let x = br.x + 5 + rand() * (BRICK_W - 10), y = br.y + 3;
@@ -526,10 +578,12 @@
             const g = ctx.createLinearGradient(left, 0, left + w, 0);
             g.addColorStop(0, wide ? '#7cf3ff' : '#6d7cff'); g.addColorStop(.5, wide ? '#c9fbff' : '#9ad9ff'); g.addColorStop(1, wide ? '#7cf3ff' : '#b78cff');
             ctx.save();
-            ctx.shadowColor = wide ? '#7cf3ff' : '#8fa0ff'; ctx.shadowBlur = 22;
+            ctx.shadowColor = wide ? '#7cf3ff' : '#8fa0ff'; ctx.shadowBlur = 12;
             ctx.fillStyle = g; rect(left, y, w, h, h / 2);
             ctx.restore();
-            ctx.fillStyle = 'rgba(255,255,255,.65)'; rect(left + h / 2, y + 2, w - h, 2.5, 1.25);
+            ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.fillRect(left + h / 2, y + 2, w - h, 1.5);
+            ctx.fillStyle = 'rgba(0,0,0,.3)';
+            for (let k = left + 8; k < left + w - 8; k += 9) ctx.fillRect(k, y + 5, 1, h - 7);   // grip notches
         }
 
         function drawBall(b) {
@@ -566,18 +620,12 @@
             }
 
             for (const br of bricks) {
-                const spr = br.steel ? STEEL_SPRITE : BRICK_SPRITES[Math.min(br.hp, HP_COLORS.length) - 1];
+                const v = br.v || 0;
+                const spr = br.steel ? STEEL_SPRITES[v] : BRICK_SPRITES[Math.min(br.hp, HP_COLORS.length) - 1][v];
                 ctx.drawImage(spr, br.x - GLOW, br.y - GLOW, BRICK_W + GLOW * 2, BRICK_H + GLOW * 2);
-                if (!br.steel) {
-                    cracks(br);
-                    if (br.hp > 1) {
-                        ctx.fillStyle = 'rgba(10,15,36,.75)'; ctx.font = '700 11px Inter, system-ui, sans-serif';
-                        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                        ctx.fillText(br.hp, br.x + BRICK_W / 2, br.y + BRICK_H / 2 + 1);
-                    }
-                }
+                if (!br.steel) cracks(br);
                 const f = br.flash ? 1 - (now - br.flash) / 140 : 0;
-                if (f > 0) { ctx.fillStyle = `rgba(255,255,255,${f * .7})`; rect(br.x, br.y, BRICK_W, BRICK_H, 6); }
+                if (f > 0) { ctx.fillStyle = `rgba(255,255,255,${f * .55})`; ctx.fillRect(br.x + 1, br.y + 1, BRICK_W - 2, BRICK_H - 2); }
             }
 
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '800 12px Inter, system-ui, sans-serif';
@@ -602,13 +650,14 @@
                 drawBall(b);
             }
 
-            ctx.save(); ctx.globalCompositeOperation = 'lighter';
             for (const p of particles) {
-                const k = Math.max(p.life / 0.5, 0);
-                ctx.fillStyle = hexA(p.color.length === 7 ? p.color : '#ffffff', k * .9);
-                ctx.beginPath(); ctx.arc(p.x, p.y, 1 + k * 2.2, 0, Math.PI * 2); ctx.fill();
+                const k = Math.max(p.life / 0.5, 0), sz = (p.size || 2) * (.5 + k * .5);
+                ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot || 0);
+                ctx.fillStyle = hexA(p.color.length === 7 ? p.color : '#ffffff', Math.min(1, k * 1.3));
+                ctx.fillRect(-sz / 2, -sz / 2, sz, sz * .7);
+                ctx.fillStyle = `rgba(0,0,0,${k * .35})`; ctx.fillRect(-sz / 2, sz * .2, sz, sz * .2);
+                ctx.restore();
             }
-            ctx.restore();
 
             if (state === 'playing' && balls.some(b => b.stuck)) {
                 ctx.fillStyle = 'rgba(230,233,245,.55)'; ctx.font = '500 14px Inter, system-ui, sans-serif';
